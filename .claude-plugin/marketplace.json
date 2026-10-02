@@ -1,0 +1,14 @@
+{
+  "name": "ritoko",
+  "description": "Ritoko: reliable, resumable browser procedures for coding agents.",
+  "owner": { "name": "Swih", "url": "https://github.com/Swih" },
+  "plugins": [
+    {
+      "name": "ritoko",
+      "source": "./",
+      "description": "Record a browser task once, rerun it with new data, verified and resumable.",
+      "category": "productivity",
+      "tags": ["browser", "automation", "rpa"]
+    }
+  ]
+}

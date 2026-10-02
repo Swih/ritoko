@@ -1,0 +1,24 @@
+{
+  "name": "ritoko",
+  "version": "0.1.0",
+  "description": "Turn a browser task your agent solved once into a reliable, resumable procedure: rerun it with new data, verified, without double submission.",
+  "author": { "name": "Swih", "url": "https://github.com/Swih" },
+  "homepage": "https://ritoko.com",
+  "repository": "https://github.com/Swih/ritoko",
+  "license": "MIT",
+  "keywords": ["browser", "automation", "rpa", "workflow", "playwright", "replay"],
+  "skills": "./skills/",
+  "mcpServers": "./.codex-plugin/mcp.json",
+  "interface": {
+    "displayName": "Ritoko",
+    "shortDescription": "Record a browser task once, rerun it with new data.",
+    "developerName": "Swih",
+    "category": "Productivity",
+    "websiteURL": "https://ritoko.com",
+    "defaultPrompt": [
+      "Record this browser task as a Ritoko workflow",
+      "Rerun my Ritoko workflow with this CSV",
+      "Resume my last Ritoko run"
+    ]
+  }
+}

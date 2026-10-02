@@ -1,0 +1,52 @@
+{
+  "name": "ritoko",
+  "version": "0.1.0",
+  "description": "Turn a browser task your agent solved once into a reliable, resumable procedure.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "ritoko": "dist/cli.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "check": "biome check . && tsc --noEmit",
+    "fix": "biome check --write .",
+    "test": "vitest run",
+    "mcp": "node src/cli.ts mcp",
+    "ritoko": "node src/cli.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "playwright-core": "^1.63.0",
+    "read-excel-file": "^9.3.10",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^26.6.4",
+    "tsdown": "^0.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Swih/ritoko.git"
+  },
+  "homepage": "https://ritoko.com",
+  "keywords": [
+    "browser",
+    "automation",
+    "rpa",
+    "workflow",
+    "playwright",
+    "mcp",
+    "claude-code",
+    "codex"
+  ]
+}

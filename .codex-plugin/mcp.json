@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ritoko": {
+      "command": "node",
+      "args": ["./dist/mcp.mjs"],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

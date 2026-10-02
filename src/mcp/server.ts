@@ -1,10 +1,11 @@
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Page } from 'playwright-core'
 import { z } from 'zod'
 import { Browser } from '../engine/browser.ts'
+import { download } from '../engine/download.ts'
 import { Ledger } from '../engine/ledger.ts'
 import { candidates, describe } from '../engine/locate.ts'
 import { home, paths } from '../engine/paths.ts'
@@ -118,11 +119,9 @@ server.registerTool(
           await element.setInputFiles(value)
           break
         case 'download': {
-          saveAs = a.saveAs ?? 'download'
           const dir = join(home, 'recordings')
           mkdirSync(dir, { recursive: true })
-          const [download] = await Promise.all([page.waitForEvent('download'), element.click()])
-          await download.saveAs(join(dir, saveAs))
+          saveAs = basename(await download(page, element, dir, a.saveAs))
           break
         }
       }

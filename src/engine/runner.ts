@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Browser } from './browser.ts'
+import { download } from './download.ts'
 import { readItems } from './items.ts'
 import type { Cause, ItemRow, Ledger, Run } from './ledger.ts'
 import { resolve, SelectorError } from './locate.ts'
@@ -270,11 +271,7 @@ export class Runner {
         await (await locate('attached')).setInputFiles(text(step.file))
         return
       case 'download': {
-        const target = await locate()
-        const [download] = await Promise.all([page.waitForEvent('download'), target.click()])
-        const file = join(this.#dir(runId), step.saveAs)
-        await download.saveAs(file)
-        scope.files[step.saveAs] = file
+        scope.files[step.saveAs] = await download(page, await locate(), this.#dir(runId), step.saveAs)
         this.ledger.updateRun(runId, { files: scope.files })
         return
       }

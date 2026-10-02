@@ -1,0 +1,166 @@
+{
+  "name": "rpa-challenge",
+  "version": 4,
+  "description": "Download the RPA Challenge workbook and submit each row to the changing form, then verify the final score.",
+  "params": {},
+  "items": {
+    "from": "{{files.challenge.xlsx}}",
+    "key": "{{item.Email}}"
+  },
+  "setup": [
+    {
+      "id": "s1",
+      "do": "goto",
+      "url": "https://rpachallenge.com"
+    },
+    {
+      "id": "s2",
+      "do": "download",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Download Excel cloud_download"
+        },
+        "fallbacks": []
+      },
+      "saveAs": "challenge.xlsx"
+    },
+    {
+      "id": "s3",
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "button",
+          "name": "Start"
+        },
+        "fallbacks": []
+      }
+    }
+  ],
+  "item": [
+    {
+      "id": "s4",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Address']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Address}}"
+    },
+    {
+      "id": "s5",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Last Name']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Last Name}}"
+    },
+    {
+      "id": "s6",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='First Name']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.First Name}}"
+    },
+    {
+      "id": "s7",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Email']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Email}}"
+    },
+    {
+      "id": "s8",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Role in Company']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Role in Company}}"
+    },
+    {
+      "id": "s9",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Phone Number']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Phone Number}}"
+    },
+    {
+      "id": "s10",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Company Name']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Company Name}}"
+    },
+    {
+      "id": "s11",
+      "commit": true,
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        "fallbacks": []
+      }
+    },
+    {
+      "id": "s13",
+      "do": "expect",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Download Excel cloud_download"
+        },
+        "fallbacks": []
+      }
+    }
+  ],
+  "teardown": [
+    {
+      "id": "s12",
+      "do": "expect",
+      "target": {
+        "primary": {
+          "by": "text",
+          "text": "Your success rate is 100%"
+        },
+        "fallbacks": []
+      }
+    }
+  ]
+}

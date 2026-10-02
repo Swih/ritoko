@@ -1,9 +1,12 @@
 {
   "mcpServers": {
     "ritoko": {
-      "command": "node",
-      "args": ["./dist/mcp.mjs"],
-      "cwd": "${PLUGIN_ROOT}"
+      "command": "npx",
+      "args": [
+        "-y",
+        "ritoko@0.1.0",
+        "mcp"
+      ]
     }
   }
 }

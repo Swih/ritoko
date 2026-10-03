@@ -355,6 +355,13 @@ export class Runner {
         if (this.ledger.run(runId).status === 'stopped') return this.#finish(runId, 'stopped')
         if (this.ledger.items(runId).some((i) => !['done', 'skipped'].includes(i.status)))
           return this.#finish(runId, 'partial')
+        // Final checks verify this run's effects; when every row was done by earlier runs there are none.
+        if (wf.items && this.ledger.items(runId).every((i) => i.status === 'skipped')) {
+          this.ledger.updateRun(runId, {
+            message: 'Every row was already done by a previous run: nothing submitted, final checks skipped.',
+          })
+          return this.#finish(runId, 'done')
+        }
         this.ledger.updateRun(runId, { phase: 'teardown', step: 0, stepId: null })
         run = this.ledger.run(runId)
       }

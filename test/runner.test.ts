@@ -212,6 +212,20 @@ describe('safe batch execution', () => {
     expect(f.ledger.run(run.id).version).toBe(1)
   })
 
+  it('skips final checks when every row was already done', async () => {
+    const f = await fixture({
+      teardown: [{ id: 'final', do: 'expect', target: target('#old-result'), timeoutMs: 20 }],
+    })
+    expect((await f.start()).status).toBe('done')
+    // The page no longer shows this run's result: nothing to verify, nothing to repair.
+    f.state.absent.add('#old-result')
+    const again = await f.start()
+    expect(again.status).toBe('done')
+    expect(again.report.counts).toEqual({ skipped: 2 })
+    expect(again.report.message).toContain('nothing submitted')
+    expect(f.state.clicks).toHaveLength(2)
+  })
+
   it('resumes final verification in a new runner without resetting the completed page', async () => {
     const f = await fixture({
       teardown: [

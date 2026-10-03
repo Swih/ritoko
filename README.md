@@ -38,7 +38,7 @@ codex plugin add ritoko@ritoko
 
 Restart the client after installing or updating. The plugin uses a Node launcher, with no npx process or published npm release. On first start it installs its runtime dependencies once (about 6 s and 43 MB), with npm lifecycle scripts disabled and the exact versions pinned in `package-lock.json`. To try a local checkout, use `.` instead of `Swih/ritoko`.
 
-Tested on Windows 11; CI also runs the tests on Linux. macOS is untested.
+Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests on Windows, Linux and macOS.
 
 `run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
 

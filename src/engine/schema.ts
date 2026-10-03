@@ -36,6 +36,8 @@ const base = {
   commit: z.boolean().optional(),
   timeoutMs: z.number().int().positive().max(120_000).optional(),
 }
+/** Steps that may wait for a slow generation (minutes): wait, expect and download. */
+const patient = { timeoutMs: z.number().int().positive().max(900_000).optional() }
 
 /** Answer to a JS alert/confirm/prompt opened by the step; any other dialog fails the step. */
 const dialog = {
@@ -53,8 +55,11 @@ export const Step = z.discriminatedUnion('do', [
   z.object({ ...base, do: z.literal('check'), target: Target, checked: z.boolean().default(true) }),
   z.object({ ...base, ...dialog, do: z.literal('press'), target: Target.optional(), key: z.string() }),
   z.object({ ...base, do: z.literal('upload'), target: Target, file: z.string() }),
-  /** Clicks the target and saves the resulting download as `files.<saveAs>`. */
-  z.object({ ...base, do: z.literal('download'), target: Target, saveAs: z.string() }),
+  /**
+   * Clicks the target and saves the resulting download as `files.<saveAs>`. saveAs may be a template
+   * (`{{item.Slug}}.mp4`): the rendered name is sanitized and never overwrites an existing file.
+   */
+  z.object({ ...base, ...patient, do: z.literal('download'), target: Target, saveAs: z.string() }),
   /** Read-only: saves the target table (HTML, or ARIA table/grid) as CSV, also usable as `files.<saveAs>`. */
   z.object({
     ...base,
@@ -65,6 +70,7 @@ export const Step = z.discriminatedUnion('do', [
   /** Verification. Fails the item when the page does not match. */
   z.object({
     ...base,
+    ...patient,
     do: z.literal('expect'),
     target: Target.optional(),
     text: z.string().optional(),
@@ -73,6 +79,7 @@ export const Step = z.discriminatedUnion('do', [
   }),
   z.object({
     ...base,
+    ...patient,
     do: z.literal('wait'),
     target: Target.optional(),
     ms: z.number().int().positive().optional(),

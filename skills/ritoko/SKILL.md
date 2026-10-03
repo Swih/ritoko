@@ -44,6 +44,8 @@ Done keys are skipped. Uncertain outcomes stay blocked even with `repeat: true`;
 8. If the recording really submitted a row, `run_adopt` it (exact row data and an evidence note) before any replay.
 9. Only if the user wants the batch run now: `run_start`, then show the result.
 
+For slow generations, give the `wait`/`expect`/`download` step a `timeoutMs` up to 900000, and name each row's file with `saveAs: "{{item.Column}}.ext"`: the name is sanitized, never overwrites (`name (2).ext`) and the report's `files` lists each saved file by its name.
+
 Table extraction to CSV and document images: see [reference.md](reference.md).
 
 ## Repair

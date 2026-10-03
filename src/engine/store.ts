@@ -132,7 +132,10 @@ export function check(wf: Workflow): string[] {
         if (field in s && typeof s[field as keyof Step] === 'string')
           verify(s[field as keyof Step] as string, s.id, itemAllowed)
       if ('target' in s && s.target) verify(JSON.stringify(s.target), s.id, itemAllowed)
-      if (s.do === 'download' || s.do === 'extract') files.add(s.saveAs)
+      if (s.do === 'download' || s.do === 'extract') {
+        verify(s.saveAs, s.id, itemAllowed)
+        files.add(references(s.saveAs).length ? s.id : s.saveAs)
+      }
     }
   }
   walk(wf.setup, false)

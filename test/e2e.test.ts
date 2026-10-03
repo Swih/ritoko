@@ -442,6 +442,40 @@ describe('Chrome and real server effects', () => {
     expect(readFileSync(file, 'utf8')).toContain('a@example.test')
   })
 
+  it('names a download after its row and never overwrites or escapes', async () => {
+    const f = await fixture(1)
+    const input = join(f.root, 'jobs.csv')
+    writeFileSync(input, 'Id,Slug\n1,Sunset\n2,Sunset\n3,../evil\n')
+    await f.store.save({
+      name: 'jobs',
+      description: 'Slow generation, named download',
+      readOnly: true,
+      params: { input: { description: 'csv' } },
+      items: { from: '{{param.input}}', key: '{{item.Id}}' },
+      item: [
+        { id: 'open', do: 'goto', url: `${f.site.url}/job` },
+        { id: 'ready', do: 'expect', text: 'Ready', timeoutMs: 600_000 },
+        {
+          id: 'save',
+          do: 'download',
+          target: { primary: { by: 'role', role: 'button', name: 'Save video' }, fallbacks: [] },
+          saveAs: '{{item.Slug}}',
+          timeoutMs: 600_000,
+        },
+        { id: 'check', do: 'expect', url: '/job' },
+      ],
+    })
+    const result = await f.runner.start('jobs', { input })
+    expect(outcome(result)).toBe('done')
+    const { save, ...files } = result.report.files
+    expect(Object.keys(files).sort()).toEqual(['Sunset (2).mp4', 'Sunset.mp4', 'evil.mp4'])
+    expect(save).toBe(files['evil.mp4'])
+    for (const path of Object.values(files)) {
+      expect(dirname(path)).toBe(result.report.dir)
+      expect(readFileSync(path, 'utf8')).toBe('video')
+    }
+  })
+
   it('follows a link that targets a new tab in the single working tab', async () => {
     const f = await fixture(3)
     await f.store.save({

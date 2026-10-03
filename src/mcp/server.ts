@@ -173,8 +173,10 @@ async function snapshot(page: Page, { ref, maxChars }: { ref?: string; maxChars?
 }
 
 /**
- * Runs a batch and, when the client sent a progressToken, reports finished items every 2 s as MCP
- * progress notifications, so a long batch shows activity instead of looking stalled.
+ * Runs a batch and, when the client sent a progressToken, sends MCP progress notifications: at once when
+ * items finish (checked every 2 s) and at least every 15 s otherwise, so a single item waiting minutes for
+ * a generation still counts as activity and resets clients' tool-call timeouts. `progress` counts
+ * notifications (it must only increase); the message carries the finished items.
  */
 async function progress<T>(
   extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
@@ -183,23 +185,21 @@ async function progress<T>(
 ): Promise<T> {
   const progressToken = extra._meta?.progressToken
   if (progressToken === undefined) return task()
-  let sent = 0
+  let count = 0
+  let finishedBefore = 0
+  let last = Date.now()
   const timer = setInterval(() => {
     const id = runId()
     if (!id) return
     const items = runner.ledger.items(id)
     const finished = items.filter((i) => !['pending', 'running', 'paused'].includes(i.status)).length
-    if (finished <= sent) return
-    sent = finished
+    if (finished === finishedBefore && Date.now() - last < 15_000) return
+    finishedBefore = finished
+    last = Date.now()
     extra
       .sendNotification({
         method: 'notifications/progress',
-        params: {
-          progressToken,
-          progress: finished,
-          total: items.length,
-          message: `${finished}/${items.length} items`,
-        },
+        params: { progressToken, progress: ++count, message: `${finished}/${items.length} items` },
       })
       .catch(() => {})
   }, 2_000)
@@ -466,7 +466,7 @@ tool(
     description: [
       'Validates and saves a workflow as a new version, then clears the recording. Returns its name, version and warnings to fix (fragile selectors, literal passwords); invalid input returns path: message errors. workflow_get shows a saved example.',
       'Shape: {name: kebab-case, description, readOnly?, params?: {<name>: {description?, required? (default true), default?} or, for a credential, {secret: true, env: "ENV_VAR"}}, items?: {from: "{{param.input}}" or "{{files.<saveAs>}}", key: "{{item.<Column>}}", scope?, sheet?, required?: [Column]}, setup?: Step[], item?: Step[], teardown?: Step[]}.',
-      'Step: {id? (s1… assigned), do, commit? (one click, press, upload, select or check per item), note?, timeoutMs?} plus, by do: goto {url} | click {target, onDialog?: accept|dismiss, dialogText?} | hover {target} | fill, select {target, value} | check {target, checked?} | press {key, target?, onDialog?} | upload {target, file} | download {target, saveAs} | extract {target, saveAs: "*.csv"} | expect {target?, text?, value?, url?} | wait {target?, ms?}.',
+      'Step: {id? (s1… assigned), do, commit? (one click, press, upload, select or check per item), note?, timeoutMs? (max 120000; 900000 for wait, expect and download)} plus, by do: goto {url} | click {target, onDialog?: accept|dismiss, dialogText?} | hover {target} | fill, select {target, value} | check {target, checked?} | press {key, target?, onDialog?} | upload {target, file} | download {target, saveAs: file name, may use {{item.Col}}} | extract {target, saveAs: "*.csv"} | expect {target?, text?, value?, url?} | wait {target?, ms?}.',
       'Target: {primary: Selector, fallbacks?: Selector[], frame?, description?}, as recorded. Selector: {by: "role", role, name?, exact?} | {by: "label" | "placeholder" | "text", text, exact?} | {by: "testid", id} | {by: "css", css} | {by: "xpath", xpath}.',
     ].join(' '),
     inputSchema: { workflow: z.looseObject({}).describe('The workflow JSON described above.') },

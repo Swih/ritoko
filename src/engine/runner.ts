@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs'
 import { access, realpath } from 'node:fs/promises'
-import { resolve as absolute, dirname, isAbsolute, join, relative, sep } from 'node:path'
+import { resolve as absolute, basename, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Browser } from './browser.ts'
 import { withDialogs } from './dialog.ts'
@@ -636,13 +636,16 @@ export class Runner {
         return
       }
       case 'download': {
-        scope.files[step.saveAs] = await download(page, await locate(), this.#dir(runId), step.saveAs)
-        this.ledger.updateRun(runId, { files: scope.files })
+        const clean = references(step.saveAs).length > 0
+        const options = { clean, timeout: step.timeoutMs }
+        const file = await download(page, await locate(), this.#dir(runId), text(step.saveAs), options)
+        this.#keep(runId, step.id, step.saveAs, scope, file)
         return
       }
       case 'extract': {
-        scope.files[step.saveAs] = await extract(await locate(), this.#dir(runId), step.saveAs)
-        this.ledger.updateRun(runId, { files: scope.files })
+        const clean = references(step.saveAs).length > 0
+        const file = await extract(await locate(), this.#dir(runId), text(step.saveAs), clean)
+        this.#keep(runId, step.id, step.saveAs, scope, file)
         return
       }
       case 'wait':
@@ -652,6 +655,17 @@ export class Runner {
       case 'expect':
         return this.#expect(step, page, text, locate)
     }
+  }
+
+  /**
+   * Records a saved file as `files.<name>`. A templated saveAs is per item: the key is the saved file's own
+   * name (unique, so the report lists every item's file) and `files.<step id>` holds the current item's file.
+   */
+  #keep(runId: string, stepId: string, saveAs: string, scope: Scope, file: string): void {
+    const templated = references(saveAs).length > 0
+    if (templated) scope.files[stepId] = file
+    scope.files[templated ? basename(file) : saveAs] = file
+    this.ledger.updateRun(runId, { files: scope.files })
   }
 
   async #expect(

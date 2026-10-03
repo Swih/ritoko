@@ -591,6 +591,19 @@ describe('journal and workflow safety', () => {
     await expect(f.ledger.exclusive(async () => 'recovered')).resolves.toBe('recovered')
   })
 
+  it('allows 15 minute timeouts only on wait, expect and download', () => {
+    const target = { primary: { by: 'role', role: 'button' } }
+    const parse = (step: object) => Workflow.parse({ name: 'x', description: 'x', item: [step] })
+    for (const step of [
+      { do: 'wait', ms: 1, timeoutMs: 900_000 },
+      { do: 'expect', text: 'a', timeoutMs: 900_000 },
+      { do: 'download', target, saveAs: '{{item.A}}.mp4', timeoutMs: 900_000 },
+    ])
+      expect(() => parse(step)).not.toThrow()
+    expect(() => parse({ do: 'wait', ms: 1, timeoutMs: 900_001 })).toThrow()
+    expect(() => parse({ do: 'click', target, timeoutMs: 120_001 })).toThrow()
+  })
+
   it('rejects dangerous workflow shapes and traversal names', async () => {
     const f = await fixture()
     expect(() => check(Workflow.parse({ ...f.wf, item: [{ id: 'empty', do: 'expect' }] }))).toThrow('expect')
@@ -672,10 +685,26 @@ describe('journal and workflow safety', () => {
     const dir = join(tmpdir(), 'downloads')
     const file = destination(dir, undefined, '../../outside.txt')
     expect(dirname(file)).toBe(dir)
-    expect(basename(file)).toMatch(/-outside\.txt$/)
-    expect(basename(destination(dir, undefined, '..\\outside.txt'))).toMatch(/-outside\.txt$/)
+    expect(basename(file)).toBe('outside.txt')
+    expect(basename(destination(dir, undefined, '..\\outside.txt'))).toBe('outside.txt')
     expect(() => destination(dir, '../outside', 'file.csv')).toThrow('plain filename')
-    expect(destination(dir, 'input', 'data.xlsx')).toMatch(/-input\.xlsx$/)
+    expect(basename(destination(dir, 'input', 'data.xlsx'))).toBe('input.xlsx')
+  })
+
+  it('sanitizes rendered per-item names and numbers collisions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ritoko-names-'))
+    const name = (saveAs: string, suggested = 'x.mp4') => basename(destination(dir, saveAs, suggested, true))
+    expect(name('a/b\\cd:e?.mp4')).toBe('cd_e_.mp4')
+    expect(name('CON')).toBe('_CON.mp4')
+    expect(name('nul.txt')).toBe('_nul.txt')
+    expect(name('clip. . ')).toBe('clip.mp4')
+    expect(name('..')).toBe('x.mp4')
+    expect(name(`${'a'.repeat(300)}.mp4`)).toHaveLength(120)
+    expect(name(`${'a'.repeat(300)}.mp4`).endsWith('.mp4')).toBe(true)
+    writeFileSync(join(dir, 'clip.mp4'), '')
+    writeFileSync(join(dir, 'clip (2).mp4'), '')
+    expect(name('clip')).toBe('clip (3).mp4')
+    rmSync(dir, { recursive: true })
   })
 
   it('rejects malformed CSV and duplicate or blank headers', async () => {

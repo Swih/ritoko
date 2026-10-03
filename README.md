@@ -40,7 +40,7 @@ Restart the client after installing or updating. The plugin uses a Node launcher
 
 Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests on Windows, Linux and macOS.
 
-`run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
+`run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches or generations lasting minutes, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
 
 ## Use
 
@@ -72,6 +72,8 @@ Workflows, runs and the browser profile live in `~/.ritoko` (override with `RITO
 - Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press, file upload, select or checkbox that auto-submits may be the commit. Only verification, waiting, receipt downloads and extracts may follow it. Declare `readOnly: true` for read-only batches.
 - JS alert/confirm/prompt dialogs are never answered silently. Set `onDialog` (`accept` or `dismiss`, plus `dialogText` for a prompt) on the click or press that opens one; any other dialog is dismissed and fails its step.
 - `extract` (read-only) saves a `<table>` or ARIA table/grid as UTF-8 CSV in the run directory, usable as `{{files.<saveAs>}}` (e.g. as `items.from`) and listed in the report's `files`. Other list layouts are not supported.
+- `download` and `extract` `saveAs` may be a template (`"{{item.Slug}}.mp4"`) so each row gets a clean name in the run directory. The rendered name is sanitized (directories, reserved characters, Windows device names, trailing dots and spaces, length cap 120 characters), a name without extension keeps the real file's extension, and a taken name is never overwritten: it becomes `name (2).ext`. A templated name is keyed in `files` by the saved file's own name (so the report lists every row's file), and `{{files.<step id>}}` is the current row's file in later steps. A literal `saveAs` stays `{{files.<saveAs>}}`, as before.
+- `wait`, `expect` and `download` accept `timeoutMs` up to 900000 (15 min) for slow generations; other steps stay capped at 120000. Progress notifications are sent at least every 15 s, even inside one long item.
 - Keep setup repeatable and free of irreversible changes. Prefer goto at the beginning of each item so a partly filled form can be rebuilt. Autosave counts as a write; split operations with several irreversible effects into separate workflows.
 - Deduplication uses workflow name + `items.scope` + business key. Set scope from destination/account/operation params, never the CSV filename. Include a period in the key for recurring operations. Different data under a completed key is blocked rather than silently skipped.
 - Input is .xlsx, or .csv in UTF-8 or else Windows-1252 (Excel's classic CSV export), separated by `,` or `;`. Excel number formats are not applied (`07001` reads as `7001`, `15%` as `0.15`): format identifier columns as Text. Hidden and filtered-out rows are read too. Formulas use the result Excel saved; a referenced cell holding a formula error or no saved result is rejected as empty. Never store credentials in a workflow: declare a secret param, read from an environment variable at run time and never stored in the workflow or journal.

@@ -97,6 +97,21 @@ export async function lab() {
       )
       return
     }
+    if (req.url === '/job') {
+      res.end(
+        html(`<p id="state">Generating</p><script>setTimeout(() => {
+          state.textContent = 'Ready'
+          document.body.insertAdjacentHTML('beforeend', '<button onclick="location = &quot;/media&quot;">Save video</button>')
+        }, 1200)</script>`),
+      )
+      return
+    }
+    if (req.url === '/media') {
+      res.setHeader('content-type', 'video/mp4')
+      res.setHeader('content-disposition', 'attachment; filename="Ugly: name?.mp4"')
+      res.end('video')
+      return
+    }
     if (req.url === '/export') {
       res.end(html('<a href="/download">Export</a>'))
       return

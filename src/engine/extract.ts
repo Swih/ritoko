@@ -3,9 +3,9 @@ import type { Locator } from 'playwright-core'
 import { bounded, destination } from './download.ts'
 
 /** Reads the HTML or ARIA table at `target` and saves it as RFC 4180 CSV in `dir`. Returns the saved path. */
-export async function extract(target: Locator, dir: string, saveAs: string): Promise<string> {
+export async function extract(target: Locator, dir: string, saveAs: string, clean = false): Promise<string> {
   const rows = await bounded(target.evaluate(readTable), 'Table extraction', 30_000)
-  const file = destination(dir, saveAs, 'table.csv')
+  const file = destination(dir, saveAs, 'table.csv', clean)
   const field = (s: string) => (/[",;\r\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s)
   await writeFile(file, rows.map((row) => `${row.map(field).join(',')}\r\n`).join(''), { flag: 'wx' })
   return file

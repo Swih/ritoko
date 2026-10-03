@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, win32 } from 'node:path'
 import type { Download, Locator, Page } from 'playwright-core'
@@ -32,7 +32,14 @@ export function bounded<T>(promise: Promise<T>, what: string, ms = 10_000): Prom
  * Plain links are fetched with the page's cookies: reliable even when they open a tab that closes at once
  * (target="_blank"). Anything else goes through the browser download event, caught on any tab.
  */
-export async function download(page: Page, trigger: Locator, dir: string, saveAs?: string): Promise<string> {
+export async function download(
+  page: Page,
+  trigger: Locator,
+  dir: string,
+  saveAs?: string,
+  options: { clean?: boolean; timeout?: number } = {},
+): Promise<string> {
+  const { clean = false, timeout } = options
   const href = await bounded(
     trigger.evaluate((el) => {
       const a = el.closest('a')
@@ -44,13 +51,18 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
   )
 
   if (href) {
-    const response = await page.request.get(href, { timeout: 60_000 })
+    const response = await page.request.get(href, { timeout: timeout ?? 60_000 })
     try {
       if (!response.ok()) throw new Error(`Download failed: HTTP ${response.status()} for ${href}`)
       const disposition = response
         .headers()
         ['content-disposition']?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)/i)?.[1]
-      const file = destination(dir, saveAs, decodeName(disposition ?? basename(new URL(href).pathname)))
+      const file = destination(
+        dir,
+        saveAs,
+        decodeName(disposition ?? basename(new URL(href).pathname)),
+        clean,
+      )
       if (Number(response.headers()['content-length'] ?? 0) > MAX_BYTES) throw tooLarge()
       const body = await response.body()
       if (body.length > MAX_BYTES) throw tooLarge()
@@ -61,10 +73,10 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
     }
   }
 
-  const waiting = anyTabDownload(page)
+  const waiting = anyTabDownload(page, timeout)
   try {
-    const [event] = await Promise.all([waiting.promise, trigger.click()])
-    const file = destination(dir, saveAs, event.suggestedFilename())
+    const [event] = await Promise.all([waiting.promise, trigger.click(timeout ? { timeout } : {})])
+    const file = destination(dir, saveAs, event.suggestedFilename(), clean)
     await event.saveAs(file)
     if ((await stat(file)).size > MAX_BYTES) {
       await rm(file)
@@ -76,26 +88,50 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
   }
 }
 
-/** Keeps the real extension (e.g. .xlsx) when saveAs has none: input readers rely on it. */
 // Characters Windows forbids in file names (C0 controls included).
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
 const RESERVED = /[<>:"|?*\x00-\x1f]/g
+const DEVICE = /^(con|prn|aux|nul|com\d|lpt\d)(\..*)?$/i
+const MAX_NAME = 120
 
-export function destination(dir: string, saveAs: string | undefined, suggested: string): string {
-  const safe = basename(win32.basename(suggested))
+/** A name safe on Windows, macOS and Linux: no directories, reserved characters or device names, bounded length. */
+export function cleanName(name: string): string {
+  const base = basename(win32.basename(name))
     .replace(RESERVED, '_')
     .replace(/[. ]+$/, '')
+  const ext = extname(base).slice(0, 16)
+  const cut = base.slice(0, base.length - ext.length).slice(0, MAX_NAME - ext.length)
+  const safe = (cut + ext).replace(/[. ]+$/, '')
+  return DEVICE.test(safe) ? `_${safe}` : safe
+}
+
+/**
+ * Path for a file in `dir`. `saveAs` is the requested name (a literal must be a plain filename; a rendered
+ * template, `clean`, is sanitized instead, since row data is untrusted). Without an extension of its own it
+ * keeps the one of `suggested`, the real file name. Never overwrites: a taken name becomes "name (2).ext".
+ */
+export function destination(
+  dir: string,
+  saveAs: string | undefined,
+  suggested: string,
+  clean = false,
+): string {
   if (
     saveAs &&
+    !clean &&
     (saveAs !== basename(win32.basename(saveAs)) ||
       saveAs.replace(RESERVED, '_') !== saveAs ||
       /^[. ]+$/.test(saveAs))
   )
     throw new Error('saveAs must be a plain filename, without directories or reserved characters')
-  const requested = saveAs || safe || 'download'
-  const name = extname(requested) ? requested : requested + extname(safe)
-  // A unique prefix also avoids Windows device names and overwriting earlier evidence.
-  return join(dir, `${randomUUID()}-${name}`)
+  const safe = cleanName(suggested)
+  const requested = (clean && saveAs ? cleanName(saveAs) : saveAs) || safe || 'download'
+  const name = extname(requested) ? requested : cleanName(requested + extname(safe))
+  const ext = extname(name)
+  for (let n = 1; ; n++) {
+    const file = join(dir, n === 1 ? name : `${name.slice(0, name.length - ext.length)} (${n})${ext}`)
+    if (!existsSync(file)) return file
+  }
 }
 
 function anyTabDownload(page: Page, timeout = 30_000): { promise: Promise<Download>; cancel: () => void } {

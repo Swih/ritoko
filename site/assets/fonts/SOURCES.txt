@@ -1,0 +1,7 @@
+Fraunces: https://github.com/undercasetype/Fraunces
+Manrope: https://github.com/sharanda/manrope
+Font files: https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,72,600;1,72,600&family=Manrope:wght@400..700&display=swap
+Retrieved: 2026-10-03
+Fraunces: regular and italic, weight 600, optical size 72 (matching the approved preview).
+Manrope: regular, variable weights 400-700.
+Latin and Latin Extended subsets. Original WOFF2 files, distributed under the included SIL Open Font License 1.1.

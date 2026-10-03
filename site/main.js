@@ -1,19 +1,22 @@
-import './analytics.js'
 // Ritoko site: theme, menu, tabs, copy buttons, JSON highlighting, explainer.
 
-import { Explainer } from './explainer.js'
-import { highlightJson } from './highlight.js'
+import { initContact } from './contact.js'
+import { initExperience } from './experience.js'
+import './analytics.js'
 
 const root = document.documentElement
 
 /* ---------------------------------------------------------------- theme */
 const themeButton = document.querySelector('.theme-toggle')
-const prefersDark = matchMedia('(prefers-color-scheme: dark)')
-const effectiveTheme = () => root.dataset.theme || (prefersDark.matches ? 'dark' : 'light')
+const effectiveTheme = () => (root.dataset.theme === 'light' ? 'light' : 'dark')
 const syncThemeButton = () => {
-  const next = effectiveTheme() === 'dark' ? 'light' : 'dark'
-  themeButton?.setAttribute('aria-label', `Switch to ${next} theme`)
-  themeButton?.setAttribute('title', `Switch to ${next} theme`)
+  const theme = effectiveTheme()
+  const next = theme === 'dark' ? 'light' : 'dark'
+  themeButton?.setAttribute('aria-label', `Switch to ${next === 'light' ? 'cream' : 'dark'} theme`)
+  themeButton?.setAttribute('title', `Switch to ${next === 'light' ? 'cream' : 'dark'} theme`)
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'dark' ? '#14130f' : '#f4f0e6')
 }
 themeButton?.addEventListener('click', () => {
   const next = effectiveTheme() === 'dark' ? 'light' : 'dark'
@@ -23,7 +26,6 @@ themeButton?.addEventListener('click', () => {
   } catch {}
   syncThemeButton()
 })
-prefersDark.addEventListener('change', syncThemeButton)
 syncThemeButton()
 
 /* ---------------------------------------------------------------- menu */
@@ -71,7 +73,7 @@ for (const group of document.querySelectorAll('[data-tabs]')) {
 }
 
 /* ---------------------------------------------------------------- copy buttons */
-const status = Object.assign(document.createElement('p'), { className: 'visually-hidden' })
+const status = Object.assign(document.createElement('p'), { className: 'sr-only' })
 status.setAttribute('role', 'status')
 document.body.append(status)
 
@@ -106,11 +108,5 @@ for (const button of document.querySelectorAll('[data-copy]')) {
   })
 }
 
-/* ---------------------------------------------------------------- code */
-for (const code of document.querySelectorAll('code[data-highlight="json"]')) {
-  code.innerHTML = highlightJson(code.textContent)
-}
-
-/* ---------------------------------------------------------------- explainer */
-const explainer = document.querySelector('[data-explainer]')
-if (explainer && 'animate' in Element.prototype) new Explainer(explainer)
+initExperience()
+initContact()

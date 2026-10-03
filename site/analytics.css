@@ -1,0 +1,28 @@
+.analytics-choice {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 100;
+  max-width: 26rem;
+  padding: 1.1rem;
+  border: 1px solid currentColor;
+  border-radius: .75rem;
+  background: #14130f;
+  color: #f4f0e6;
+  font: 14px/1.5 system-ui, sans-serif;
+  box-shadow: 0 8px 32px #0003;
+}
+.analytics-choice[hidden] { display: none; }
+.analytics-choice p { margin: 0 0 .8rem; }
+.analytics-choice button, .analytics-settings {
+  padding: .5rem .7rem;
+  background: transparent;
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: .3rem;
+  font: inherit;
+  cursor: pointer;
+}
+.analytics-choice button + button { margin-left: .5rem; }
+.analytics-choice a { display: inline-block; margin-left: .7rem; color: inherit; text-decoration: underline; }
+.analytics-settings { border: 0; text-decoration: underline; }
+.analytics-choice button:focus-visible, .analytics-settings:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

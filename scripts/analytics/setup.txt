@@ -1,0 +1,50 @@
+Ritoko website analytics — operations
+
+Dashboard: https://stats.ritoko.com (authenticated, not shared).
+Backend: https://github.com/Swih/ritoko-analytics, branch production.
+Pinned Umami 3.4.0; Vercel deploys this branch automatically, functions fra1.
+Database: dedicated Neon Free project ritoko-analytics in Frankfurt.
+Public website UUID: 12864b69-118e-4055-a01a-0f0e394404f1.
+No paid analytics subscription was added; hosting remains subject to quotas.
+
+Private credentials live OUTSIDE the repo in the user's .config/ritoko/analytics:
+admin.json (dashboard), reporting.env (revocable read-only API key),
+reporting.json (bootstrap metadata), cron-secret.txt (retention authentication).
+DATABASE_URL and server secrets are Vercel Production variables.
+Never package, publish or paste these credentials into site JavaScript.
+
+Read reports with Node 24:
+node --env-file=<private-reporting.env> scripts/analytics/report.mjs 7
+Reports cover a rolling 1–90 days: visitors, visits, pageviews, pages, referring
+origins, events and visitors active in the last five minutes. Active means a
+recent signal, not proof a browser remains open. No assistant monitor scheduled.
+
+Events: section_view, install_tab, install_copy_intent, github_click,
+use_cases_click, case_select, demo_mode, faq_toggle, video_start, video_25,
+video_50, video_75, video_complete. Copy intent is not clipboard success.
+Website interest is not proof of plugin installation or successful workflows.
+
+main.js imports analytics.js; preserve that import when changing the design.
+Public configuration: site/analytics-config.js. Notice: /privacy.
+Tracker loads only after consent. DNT/GPC, localhost and previews are excluded.
+Only known public routes and predefined event/data values are accepted.
+No plugin telemetry, recordings, heatmaps, form/clipboard content, account IDs,
+URL queries or fragments. Referrers are reduced to origin. Umami and hosting
+process network metadata; this is not a promise of legal anonymity/compliance.
+
+User authorized deletion of analytics older than 90 days. Vercel invokes
+/internal/retention daily at 03:00 UTC with CRON_SECRET. Scope is limited to
+RITOKO_WEBSITE_ID. Configuration, recent rows and referenced sessions are kept.
+Unauthorized calls return 401. No public dashboard/share link exists.
+
+Check: node scripts/analytics/check.mjs
+Real Chrome tests use a mock collector, avoiding production pollution.
+Also verify real events in Umami after every tracker update. Review free quotas
+monthly; plan DB exports/backups. Free hosting has no uptime guarantee.
+Upgrade the Umami fork deliberately; review custom retention against new schemas
+and recheck read-only permissions. Revoke reporting keys when no longer needed.
+
+References:
+https://docs.umami.is/docs/tracker-configuration
+https://docs.umami.is/docs/api/common-endpoints
+https://docs.umami.is/docs/guides/running-on-vercel

@@ -1,3 +1,4 @@
+import './analytics.js'
 // Ritoko site: theme, menu, tabs, copy buttons, JSON highlighting, explainer.
 
 import { Explainer } from './explainer.js'

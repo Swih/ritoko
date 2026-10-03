@@ -17,14 +17,17 @@ Items already confirmed in the same workflow/scope are skipped. Unknown outcomes
 
 ## Record a new workflow
 
-1. Check the site allows automation. On a login, MFA or CAPTCHA, ask the user to complete it in the Ritoko window. Never type their passwords.
+1. Check the site allows automation. On a login, MFA or CAPTCHA, ask the user to complete it in the Ritoko window. Never type their passwords. Never store credentials in a workflow: a credential the workflow must type goes in a param such as `{{param.password}}`, supplied at run time.
 2. `browser_open` the start URL and read the snapshot.
 3. Do the task once, for real, with `browser_act`, batching actions in one call. Use the first data row as values.
-   Check the returned selectors: role, label or visible text are robust. An id or name made of random letters is generated: use `inspect`, or write an XPath anchored on visible text instead.
+   Use `"do": "hover"` to open hover menus. When an action opens a JS alert/confirm/prompt, it fails: repeat it with `"dialog": "accept"` or `"dismiss"` (prompt text in `value`) only if the user intends that answer.
+   Check the returned selectors: role, label or visible text are robust. An id or name made of random letters is generated: use `inspect`, or write an XPath anchored on visible text instead. Unlabeled controls get an XPath anchored on adjacent text or on their position in a container with an id. `"fragile": true` means only a positional CSS path was found: replace it by hand when you can. Elements inside an iframe get `target.frame`, the iframe's selector; their selectors apply inside it.
+   Links and forms that target a new tab open in Ritoko's single working tab, when recording and replaying, so the next steps act on the opened page. Script popups (`window.open`) are not followed: `goto` their URL instead.
 4. Confirm success on the page: confirmation message, new row, downloaded file.
 5. Call `recording`, then write the workflow:
    - `setup`: repeatable preparation, free of irreversible business changes. It runs again after a crash.
-   - `items`: `{ "from": "{{param.input}}" or "{{files.<saveAs>}}", "key": "{{item.<unique column>}}", "scope": "{{param.account}}" }`. Scope identifies the destination/account/operation, never the input filename. Include a period in the key for recurring operations. Columns are header names, trimmed.
+   - `items`: `{ "from": "{{param.input}}" or "{{files.<saveAs>}}", "key": "{{item.<unique column>}}", "scope": "{{param.account}}" }`. Scope identifies the destination/account/operation, never the input filename. Include a period in the key for recurring operations. Columns are header names, trimmed. A CSV is read as UTF-8, or as Windows-1252 (Excel's classic CSV export) when it is not valid UTF-8. Excel dates become `YYYY-MM-DD`, or `YYYY-MM-DDTHH:MM:SS` when they have a time.
+   - Step `id`s are optional: missing ones become `s1`, `s2`…
    - `item`: begin with a goto for independent forms. Replace literal values with `{{item.Column}}`. Mark exactly one submission step `"commit": true`, followed by `expect` proving that specific row's success. The commit may be click, press or upload when file selection auto-submits. Only expect, wait, receipt downloads or extracts may follow it. Declare `readOnly: true` for read-only batches. Autosave counts as a write; split workflows with multiple irreversible effects.
    - `teardown`: final checks.
    - `params` for anything that changes between runs (period, file path).
@@ -44,7 +47,7 @@ To pull data from a back-office, write by hand `{ "id": "export", "do": "extract
 2. `step_repair` with the returned `runId`, workflow, step ID and new target (keep a fallback). It changes that frozen run's target, never its action order or submission boundary.
 3. `run_resume`. Do not restart the run: done items stay done.
 
-Before commit, resume rebuilds the form from its first step. After commit, only verification may resume on the same live document. If the document was lost or reloaded, the item becomes review. Never use browser actions to submit a paused committed item again.
+Before commit, resume rebuilds the form from its first step. After commit, only verification may resume on the same live document. If the document was lost or reloaded, the item becomes review. Only the run's first submitted item pauses for a missing verification target, and only once (if the page shows an error, resume without repair: it goes to review); every later miss, or expected text absent from the page, goes to review while the batch continues. Never use browser actions to submit a paused committed item again.
 
 For review, inspect the site's business record. Use `run_resolve` only when the result is established: `done` if the effect exists, `failed` if it definitely did not occur. Supply an evidence note. If the result remains unclear, leave review unchanged. For a duplicate-held row, resolve its original run first.
 

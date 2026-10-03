@@ -3,9 +3,12 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, relative, sep } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js'
+import type { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js'
 import type { Page } from 'playwright-core'
 import { z } from 'zod'
 import { Browser } from '../engine/browser.ts'
+import { withDialogs } from '../engine/dialog.ts'
 import { download } from '../engine/download.ts'
 import { Ledger } from '../engine/ledger.ts'
 import { candidates, describe } from '../engine/locate.ts'
@@ -18,6 +21,8 @@ const browser = new Browser()
 const store = new Store()
 const runner = new Runner(browser, new Ledger(paths.db), store)
 const recording: Step[] = []
+/** Selectors of password inputs filled while recording: a workflow must not store their literal values. */
+const passwordFields = new Set<string>()
 
 const server = new McpServer({ name: 'ritoko', version: '0.1.0' })
 
@@ -29,6 +34,44 @@ const text = (value: unknown) => ({ content: [block(value)] })
 
 async function snapshot(page: Page): Promise<string> {
   return `url: ${page.url()}\ntitle: ${await page.title()}\n\n${await page.ariaSnapshot({ mode: 'ai' })}`
+}
+
+/**
+ * Runs a batch and, when the client sent a progressToken, reports finished items every 2 s as MCP
+ * progress notifications, so a long batch shows activity instead of looking stalled.
+ */
+async function progress<T>(
+  extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  runId: () => string | undefined,
+  task: () => Promise<T>,
+): Promise<T> {
+  const progressToken = extra._meta?.progressToken
+  if (progressToken === undefined) return task()
+  let sent = 0
+  const timer = setInterval(() => {
+    const id = runId()
+    if (!id) return
+    const items = runner.ledger.items(id)
+    const finished = items.filter((i) => !['pending', 'running', 'paused'].includes(i.status)).length
+    if (finished <= sent) return
+    sent = finished
+    extra
+      .sendNotification({
+        method: 'notifications/progress',
+        params: {
+          progressToken,
+          progress: finished,
+          total: items.length,
+          message: `${finished}/${items.length} items`,
+        },
+      })
+      .catch(() => {})
+  }, 2_000)
+  try {
+    return await task()
+  } finally {
+    clearInterval(timer)
+  }
 }
 
 function record(step: StepBody): Step {
@@ -102,13 +145,22 @@ server.registerTool(
 )
 
 const Action = z.object({
-  do: z.enum(['click', 'fill', 'select', 'check', 'press', 'upload', 'download', 'inspect']),
+  do: z.enum(['click', 'hover', 'fill', 'select', 'check', 'press', 'upload', 'download', 'inspect']),
   ref: z
     .string()
     .optional()
     .describe('Element ref from the latest snapshot (e.g. "e12"). Optional for press.'),
-  value: z.string().optional().describe('fill/select: the value. upload: file path.'),
+  value: z
+    .string()
+    .optional()
+    .describe('fill/select: the value. upload: file path. click/press with dialog "accept": prompt text.'),
   key: z.string().optional().describe('press: key such as "Enter".'),
+  dialog: z
+    .enum(['accept', 'dismiss'])
+    .optional()
+    .describe(
+      'click/press: answer to the JS alert/confirm/prompt it opens. Any other dialog fails the action.',
+    ),
   checked: z.boolean().optional(),
   saveAs: z.string().optional().describe('download: file name, later usable as {{files.<saveAs>}}.'),
 })
@@ -135,71 +187,88 @@ server.registerTool(
           'A submitted item is awaiting verification. Inspect and repair its verification, or resolve it; do not perform browser actions that may submit again.',
         )
       for (const a of actions) {
+        const answer = a.do === 'click' || a.do === 'press' ? { onDialog: a.dialog, dialogText: a.value } : {}
+        // A step records the answer only when its dialog actually appeared.
+        const report = (dialog: string | undefined) => (a.dialog ? { dialog: dialog ?? 'none appeared' } : {})
         if (a.do === 'press' && !a.ref) {
-          await page.keyboard.press(a.key ?? 'Enter')
-          results.push(record({ do: 'press', key: a.key ?? 'Enter' }))
+          const key = a.key ?? 'Enter'
+          const dialog = await withDialogs(page, answer, () => page.keyboard.press(key))
+          results.push({ step: record({ do: 'press', key, ...(dialog ? answer : {}) }), ...report(dialog) })
           continue
         }
         if (!a.ref) throw new Error(`"${a.do}" needs a ref`)
         const found = await candidates(page, a.ref)
         if (a.do === 'inspect') {
-          results.push({ ref: a.ref, candidates: found })
+          results.push({ ref: a.ref, ...found })
           continue
         }
         const element = page.locator(`aria-ref=${a.ref}`)
         const value = a.value ?? ''
         let saveAs: string | undefined
         let downloadedFile: string | undefined
-        switch (a.do) {
-          case 'click':
-            await element.click()
-            break
-          case 'fill':
-            await element.fill(value)
-            break
-          case 'select':
-            await element.selectOption(value)
-            break
-          case 'check':
-            await element.setChecked(a.checked ?? true)
-            break
-          case 'press':
-            await element.press(a.key ?? 'Enter')
-            break
-          case 'upload':
-            await element.setInputFiles(value)
-            break
-          case 'download': {
-            const dir = join(home, 'recordings')
-            mkdirSync(dir, { recursive: true })
-            const saved = await download(page, element, dir, a.saveAs)
-            downloadedFile = saved
-            saveAs = a.saveAs ?? basename(saved)
-            break
+        const dialog = await withDialogs(page, answer, async () => {
+          switch (a.do) {
+            case 'click':
+              await element.click()
+              break
+            case 'hover':
+              await element.hover()
+              break
+            case 'fill':
+              await element.fill(value)
+              break
+            case 'select':
+              await element.selectOption(value)
+              break
+            case 'check':
+              await element.setChecked(a.checked ?? true)
+              break
+            case 'press':
+              await element.press(a.key ?? 'Enter')
+              break
+            case 'upload':
+              await element.setInputFiles(value)
+              break
+            case 'download': {
+              const dir = join(home, 'recordings')
+              mkdirSync(dir, { recursive: true })
+              const saved = await download(page, element, dir, a.saveAs)
+              downloadedFile = saved
+              saveAs = a.saveAs ?? basename(saved)
+              break
+            }
           }
-        }
-        const [primary, ...fallbacks] = found
+        })
+        const [primary, ...fallbacks] = found.selectors
         if (!primary) {
           results.push({
-            warning: `Action done, but no robust selector found for ${a.ref}: write the target by hand.`,
+            warning: `Action done, but no selector found for ${a.ref}: write the target by hand.`,
             action: a,
           })
           continue
         }
-        const target = { primary, fallbacks: fallbacks.slice(0, 2) }
+        if (a.do === 'fill' && (await element.evaluate((el) => (el as HTMLInputElement).type === 'password')))
+          passwordFields.add(describe(primary))
+        const target = {
+          ...(found.frame && { frame: found.frame }),
+          primary,
+          fallbacks: fallbacks.slice(0, 2),
+        }
         const step = {
-          click: { do: 'click', target },
+          click: { do: 'click', target, ...(dialog ? answer : {}) },
+          hover: { do: 'hover', target },
           fill: { do: 'fill', target, value },
           select: { do: 'select', target, value },
           check: { do: 'check', target, checked: a.checked ?? true },
-          press: { do: 'press', target, key: a.key ?? 'Enter' },
+          press: { do: 'press', target, key: a.key ?? 'Enter', ...(dialog ? answer : {}) },
           upload: { do: 'upload', target, file: value },
           download: { do: 'download', target, saveAs: saveAs ?? 'download' },
         }[a.do] as StepBody
         results.push({
           step: record(step),
-          selectors: found.map(describe),
+          ...(found.fragile && { fragile: true }),
           ...(downloadedFile ? { downloadedFile } : {}),
+          ...report(dialog),
         })
       }
       return { content: wantSnapshot ? [block(results), block(await snapshot(page))] : [block(results)] }
@@ -224,10 +293,25 @@ server.registerTool(
   'workflow_save',
   {
     description:
-      'Validate and save a workflow (new version on each save). Returns warnings to fix (missing verification, missing commit step, fragile selectors).',
+      'Validate and save a workflow (new version on each save). Step ids are optional (s1, s2… are assigned). Returns warnings to fix (fragile selectors).',
     inputSchema: { workflow: Workflow },
   },
-  async ({ workflow }) => runner.ledger.exclusive(async () => text(await store.save(workflow))),
+  async ({ workflow }) =>
+    runner.ledger.exclusive(async () => {
+      const saved = await store.save(workflow)
+      for (const step of [...saved.workflow.setup, ...saved.workflow.item, ...saved.workflow.teardown])
+        if (
+          step.do === 'fill' &&
+          step.value &&
+          !step.value.includes('{{') &&
+          (passwordFields.has(describe(step.target.primary)) ||
+            /passw|pwd/i.test(JSON.stringify(step.target)))
+        )
+          saved.warnings.push(
+            `${step.id}: a literal password is stored in the workflow. Use "{{param.password}}" (declared in params) and pass it at run time.`,
+          )
+      return text(saved)
+    }),
 )
 
 server.registerTool(
@@ -274,7 +358,14 @@ server.registerTool(
     },
     annotations: { destructiveHint: true, openWorldHint: true },
   },
-  async ({ workflow, params, repeat }) => text(await runner.start(workflow, params, { repeat })),
+  async ({ workflow, params, repeat }, extra) => {
+    const previous = runner.ledger.lastRun(workflow)?.id
+    const current = () => {
+      const id = runner.ledger.lastRun(workflow)?.id
+      return id === previous ? undefined : id
+    }
+    return text(await progress(extra, current, () => runner.start(workflow, params, { repeat })))
+  },
 )
 
 server.registerTool(
@@ -285,7 +376,14 @@ server.registerTool(
     inputSchema: { runId: z.string() },
     annotations: { destructiveHint: true, openWorldHint: true },
   },
-  async ({ runId }) => text(await runner.resume(runId)),
+  async ({ runId }, extra) =>
+    text(
+      await progress(
+        extra,
+        () => runId,
+        () => runner.resume(runId),
+      ),
+    ),
 )
 
 server.registerTool(
@@ -329,7 +427,9 @@ server.registerTool(
   async ({ workflow, runId, stepId, target }) => {
     const run = runner.ledger.run(runId ?? runner.ledger.lastRun(workflow)?.id ?? '')
     if (run.workflow !== workflow) throw new Error('Run does not belong to that workflow')
-    return text(await runner.repair(run.id, stepId, target))
+    const wf = await runner.repair(run.id, stepId, target)
+    const step = [...wf.setup, ...wf.item, ...wf.teardown].find((s) => s.id === stepId)
+    return text({ step, version: (await store.get(workflow)).version })
   },
 )
 

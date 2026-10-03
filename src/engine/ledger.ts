@@ -30,6 +30,8 @@ export type Run = {
   message: string | null
   startedAt: string
   finishedAt: string | null
+  /** Execution time, excluding pauses, stops and the time between them and a resume. */
+  activeMs: number
 }
 
 export type ItemRow = {
@@ -64,6 +66,8 @@ type RunRecord = {
   message: string | null
   started_at: string
   finished_at: string | null
+  active_ms: number
+  active_since: number | null
 }
 
 type ItemRecord = {
@@ -129,6 +133,8 @@ export class Ledger {
           scope: "TEXT NOT NULL DEFAULT ''",
           step_id: 'TEXT',
           items_loaded: 'INTEGER NOT NULL DEFAULT 0',
+          active_ms: 'INTEGER NOT NULL DEFAULT 0',
+          active_since: 'INTEGER',
         },
         items: { step_id: 'TEXT' },
       })) {
@@ -136,8 +142,15 @@ export class Ledger {
           .prepare(`PRAGMA table_info(${table})`)
           .all()
           .map((r) => r.name)
-        for (const [column, type] of Object.entries(additions))
-          if (!columns.includes(column)) this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+        for (const [column, type] of Object.entries(additions)) {
+          if (columns.includes(column)) continue
+          this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`)
+          // Earlier runs only kept wall-clock bounds.
+          if (column === 'active_ms')
+            this.db.exec(
+              'UPDATE runs SET active_ms = CAST((julianday(finished_at) - julianday(started_at)) * 86400000 AS INTEGER) WHERE finished_at IS NOT NULL',
+            )
+        }
       }
       this.db.exec(
         'UPDATE runs SET items_loaded = 1 WHERE EXISTS (SELECT 1 FROM items WHERE run_id = runs.id)',
@@ -185,7 +198,7 @@ export class Ledger {
     const id = `${workflow}-${randomUUID()}`
     this.db
       .prepare(
-        'INSERT INTO runs (id, workflow, version, params, repeat, status, started_at, definition, scope) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO runs (id, workflow, version, params, repeat, status, started_at, definition, scope, active_since) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         id,
@@ -197,6 +210,7 @@ export class Ledger {
         now(),
         definition ? JSON.stringify(definition) : null,
         scope,
+        Date.now(),
       )
     return this.run(id)
   }
@@ -221,6 +235,7 @@ export class Ledger {
       message: r.message,
       startedAt: r.started_at,
       finishedAt: r.finished_at,
+      activeMs: r.active_ms + (r.active_since === null ? 0 : Date.now() - r.active_since),
     }
   }
 
@@ -256,6 +271,10 @@ export class Ledger {
     if (patch.status) {
       sets.push('finished_at = ?')
       values.push(['done', 'partial', 'stopped'].includes(patch.status) ? now() : null)
+      // Any status change closes the current execution segment; running opens a new one.
+      const time = Date.now()
+      sets.push('active_ms = active_ms + COALESCE(? - active_since, 0)', 'active_since = ?')
+      values.push(time, patch.status === 'running' ? time : null)
     }
     if (!sets.length) return
     this.db.prepare(`UPDATE runs SET ${sets.join(', ')} WHERE id = ?`).run(...values, id)

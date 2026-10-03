@@ -7,6 +7,8 @@ export async function lab() {
   let accepted: (() => void) | undefined
   let waiting: ServerResponse | undefined
   let rejectConfirmation = false
+  let serverError = false
+  let covered = false
   const html = (body: string) =>
     `<!doctype html><html><head><title>Ritoko Lab</title></head><body>${body}</body></html>`
   const escapeHtml = (s: string) =>
@@ -37,7 +39,7 @@ export async function lab() {
         html(`<form method="post" action="/submit">
         <label for="email-${id}">Email</label><input id="email-${id}" name="Email" required>
         <label for="name-${id}">Name</label><input id="name-${id}" name="Name" required>
-        <button>Create customer</button></form>`),
+        <button>Create customer</button></form>${covered ? '<div style="position:fixed;inset:0"></div>' : ''}`),
       )
       return
     }
@@ -47,6 +49,11 @@ export async function lab() {
       const values = new URLSearchParams(body)
       const item = { Email: values.get('Email') ?? '', Name: values.get('Name') ?? '' }
       submissions.push(item) // Intentionally accepts duplicates: the client must prevent them.
+      if (serverError) {
+        res.statusCode = 500
+        res.end(html('<h1>Internal Server Error</h1>'))
+        return
+      }
       if (item.Email === holdKey) {
         waiting = res
         accepted?.()
@@ -80,8 +87,43 @@ export async function lab() {
       )
       return
     }
+    if (req.url === '/widgets') {
+      res.end(
+        html(`<style>.sub{display:none} nav:hover .sub{display:inline}</style>
+        <div contenteditable="true" role="textbox" aria-label="Note"></div>
+        <button onclick="out.textContent = confirm('Delete record?') ? 'Deleted' : 'Kept'">Delete</button>
+        <nav><span>Menu</span> <a class="sub" href="#" onclick="out.textContent = 'Archived'">Archive</a></nav>
+        <p id="out" role="status"></p>`),
+      )
+      return
+    }
     if (req.url === '/export') {
       res.end(html('<a href="/download">Export</a>'))
+      return
+    }
+    if (req.url === '/tabs') {
+      res.end(html('<a href="/form" target="_blank">New customer</a>'))
+      return
+    }
+    if (req.url === '/login') {
+      res.setHeader('set-cookie', ['session=1; Path=/', 'remember=1; Path=/; Max-Age=3600'])
+      res.end(html('Signed in'))
+      return
+    }
+    if (req.url === '/whoami') {
+      res.end(html(`<p>${escapeHtml(req.headers.cookie ?? 'anonymous')}</p>`))
+      return
+    }
+    if (req.url === '/checkboxes') {
+      res.end(
+        html(
+          '<h3>Checkboxes</h3><form id="checkboxes"><input type="checkbox"> checkbox 1<br><input type="checkbox" checked> checkbox 2</form><p><input type="checkbox"><input type="checkbox"></p>',
+        ),
+      )
+      return
+    }
+    if (req.url === '/framed') {
+      res.end(html('<iframe title="Settings" src="/checkboxes"></iframe>'))
       return
     }
     res.end(html('<a href="/form">Customers</a>'))
@@ -106,6 +148,12 @@ export async function lab() {
     },
     failConfirmation() {
       rejectConfirmation = true
+    },
+    failWithServerError() {
+      serverError = true
+    },
+    coverForm(value: boolean) {
+      covered = value
     },
     async close() {
       waiting?.destroy()

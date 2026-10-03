@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv } from '../src/engine/items.ts'
+import { cell, decode, parseCsv } from '../src/engine/items.ts'
 import { Ledger } from '../src/engine/ledger.ts'
 import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
 import { check } from '../src/engine/store.ts'
@@ -28,6 +28,19 @@ describe('parseCsv', () => {
       ['a', 'b'],
       ['x;1', 'say "hi"'],
     ])
+  })
+})
+
+describe('input cells', () => {
+  it('decodes UTF-8 with BOM, or Windows-1252 from a classic Excel export', () => {
+    expect(decode(Buffer.from('\uFEFFName\nJosé Müller', 'utf8'))).toBe('Name\nJosé Müller')
+    expect(decode(Buffer.from([0x4a, 0x6f, 0x73, 0xe9, 0x20, 0x4d, 0xfc, 0x80]))).toBe('José Mü€')
+  })
+  it('keeps the time of day and drops float noise', () => {
+    expect(cell(new Date(Date.UTC(2026, 9, 4)))).toBe('2026-10-04')
+    expect(cell(new Date(Date.UTC(2026, 9, 4, 12)))).toBe('2026-10-04T12:00:00')
+    expect(cell(0.1 + 0.2)).toBe('0.3')
+    expect(cell(1e15 + 1)).toBe('1000000000000001')
   })
 })
 

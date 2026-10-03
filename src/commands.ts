@@ -41,8 +41,11 @@ function print(outcome: Outcome): void {
     .map(([status, n]) => `${status} ${n}`)
     .join(' · ')
   console.log(`${report.runId}  ${outcome.status}  ${(report.durationMs / 1000).toFixed(1)}s  ${counts}`)
-  for (const item of report.items.filter((i) => i.status !== 'done'))
+  const pending = report.items.filter((i) => i.status !== 'done')
+  for (const item of pending.slice(0, 10))
     console.log(`  #${item.idx + 1} ${item.key}: ${item.status}${item.message ? ` — ${item.message}` : ''}`)
+  if (pending.length > 10)
+    console.log(`  … and ${pending.length - 10} more (see \`ritoko report ${report.runId}\`)`)
   if (outcome.status === 'needs_repair')
     console.log(
       `\nStep "${outcome.stepId}" needs repair: ${outcome.error}\nAsk your agent to repair it, then: ritoko resume ${report.runId}`,

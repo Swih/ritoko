@@ -1,6 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { Page } from 'playwright-core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { destination } from '../src/engine/download.ts'
@@ -55,7 +57,8 @@ function fakePage() {
     async innerText() {
       return `Created ${state.values.get('#email')}`
     },
-    async click() {
+    async click(options?: { trial?: boolean }) {
+      if (options?.trial) return
       state.clicks.push(css)
       if (state.failSubmit) throw new Error('connection lost after server accepted')
     },
@@ -67,6 +70,8 @@ function fakePage() {
   const page = {
     locator,
     isClosed: () => false,
+    on() {},
+    off() {},
     url: () => state.url,
     async goto(url: string) {
       state.url = url
@@ -323,6 +328,39 @@ describe('safe batch execution', () => {
     expect(f.state.clicks).toHaveLength(2)
   })
 
+  it('pauses only the first submitted item for a missing verification target, then reviews and continues', async () => {
+    const f = await fixture({
+      item: [
+        { id: 'submit', do: 'click', commit: true, target: target('#submit') },
+        { id: 'verify', do: 'expect', target: target('#missing'), timeoutMs: 1 },
+      ],
+    })
+    f.state.absent.add('#missing')
+    const paused = await f.start()
+    expect(paused.status).toBe('needs_repair')
+    const resumed = await f.runner.resume(paused.report.runId)
+    expect(resumed.status).toBe('partial')
+    expect(resumed.report.items.map((i) => [i.status, i.cause])).toEqual([
+      ['review', 'verification'],
+      ['review', 'verification'],
+    ])
+    expect(f.state.clicks).toHaveLength(2)
+  })
+
+  it('reports active time only, without the pause before a resume', async () => {
+    const f = await fixture()
+    f.state.absent.add('#name')
+    const started = Date.now()
+    const paused = await f.start()
+    const { durationMs } = f.runner.report(paused.report.runId)
+    await delay(50)
+    expect(f.runner.report(paused.report.runId).durationMs).toBe(durationMs)
+    f.state.absent.delete('#name')
+    const done = await f.runner.resume(paused.report.runId)
+    expect(done.report.durationMs).toBeGreaterThanOrEqual(durationMs)
+    expect(done.report.durationMs).toBeLessThanOrEqual(Date.now() - started - 50)
+  })
+
   it('checks target-only expects instead of declaring an absent target successful', async () => {
     const f = await fixture({
       item: [
@@ -438,6 +476,53 @@ describe('journal and workflow safety', () => {
       ),
     ).toThrow('after commit')
     await expect(f.store.get('../outside')).rejects.toThrow('Invalid')
+  })
+
+  it('assigns missing step ids and explains invalid workflows briefly', async () => {
+    const f = await fixture()
+    const { workflow } = await f.store.save({
+      ...f.wf,
+      params: { input: {}, account: { default: 'test' } },
+      item: f.wf.item.map(({ id, ...s }) => (id === 'name' ? s : { ...s, id: id === 'form' ? 's1' : id })),
+    })
+    expect(workflow.item.map((s) => s.id)).toEqual(['s1', 'email', 's2', 'submit', 'verify'])
+    await expect(
+      f.store.save({ ...f.wf, item: [{ do: 'click', target: { primary: { by: 'role' } } }] }),
+    ).rejects.toThrow('Invalid workflow:\n- item[0].target.primary.role: Invalid input')
+  })
+
+  it('describes read-only items without referring to a commit', async () => {
+    const f = await fixture()
+    const readOnly = (item: WorkflowInput['item']) => check(Workflow.parse({ ...f.wf, readOnly: true, item }))
+    expect(() => readOnly([{ id: 'open', do: 'goto', url: 'https://example.test/' }])).toThrow(
+      'An item needs an expect checking its result',
+    )
+    expect(
+      readOnly([
+        { id: 'search', do: 'click', target: { primary: { by: 'role', role: 'button', name: 'Search' } } },
+        { id: 'found', do: 'expect', text: 'Results' },
+      ]),
+    ).toEqual([])
+  })
+
+  it('migrates journals created before active time tracking', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ritoko-test-'))
+    const file = join(root, 'journal.db')
+    const legacy = new DatabaseSync(file)
+    legacy.exec(`CREATE TABLE runs (
+      id TEXT PRIMARY KEY, workflow TEXT NOT NULL, version INTEGER NOT NULL,
+      params TEXT NOT NULL, files TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'setup', step INTEGER NOT NULL DEFAULT 0,
+      repeat INTEGER NOT NULL DEFAULT 0, message TEXT, started_at TEXT NOT NULL, finished_at TEXT)`)
+    legacy
+      .prepare(
+        "INSERT INTO runs (id, workflow, version, params, status, started_at, finished_at) VALUES ('old', 'demo', 1, '{}', 'done', ?, ?)",
+      )
+      .run('2026-01-01T00:00:00.000Z', '2026-01-01T00:00:02.500Z')
+    legacy.close()
+    const ledger = new Ledger(file)
+    resources.push({ root, ledger })
+    expect(ledger.run('old').activeMs).toBe(2500)
   })
 
   it('keeps remote download names inside the directory and rejects unsafe explicit names', () => {

@@ -35,7 +35,9 @@ export class Browser {
   }
 
   async #open(): Promise<Page> {
-    if (!this.#connection?.isConnected()) {
+    const connecting = !this.#connection?.isConnected()
+    let launched = false
+    if (connecting) {
       const ledger = new Ledger(join(dirname(this.profile), 'ritoko.db'))
       try {
         await ledger.exclusive(async () => {
@@ -50,6 +52,8 @@ export class Browser {
               '--remote-debugging-port=0',
               '--no-first-run',
               '--no-default-browser-check',
+              // "Continue where you left off": keeps session cookies (logins without "remember me").
+              '--restore-last-session',
               ...(this.headless ? ['--headless=new'] : []),
               'about:blank',
             ],
@@ -60,6 +64,7 @@ export class Browser {
             launchError = error
           })
           child.unref()
+          launched = true
           const deadline = Date.now() + 20_000
           while (Date.now() < deadline) {
             if (launchError) throw launchError
@@ -77,8 +82,13 @@ export class Browser {
     if (!this.#context) throw new Error('Chrome has no browser context')
     this.#context.setDefaultTimeout(10_000)
     this.#context.setDefaultNavigationTimeout(30_000)
+    if (connecting) await this.#context.addInitScript(sameTab)
     const pages = this.#context.pages()
     this.#page = pages.at(-1) ?? (await this.#context.newPage())
+    // A new Chrome reopens the tabs of its previous session: keep a single working tab.
+    if (launched) for (const other of pages) if (other !== this.#page) await other.close()
+    // A background tab is throttled by Chrome: work in the visible one.
+    await this.#page.bringToFront()
     return this.#page
   }
 
@@ -124,6 +134,26 @@ export class Browser {
     await session?.send('Browser.close').catch(() => {})
     await this.close().catch(() => {})
   }
+}
+
+/**
+ * Runs in every page Ritoko drives: a plain click on a target=_blank link, or a form submitted to _blank,
+ * stays in the working tab. A new tab appears only after the click returns, so it cannot be followed
+ * deterministically; the same navigation in the working tab can, and opens no stray tab.
+ */
+function sameTab() {
+  const stay = (element: Element | null | undefined) => {
+    if (element?.getAttribute('target') === '_blank') element.setAttribute('target', '_self')
+  }
+  document.addEventListener(
+    'click',
+    (event) => {
+      if (!event.ctrlKey && !event.metaKey && !event.shiftKey && event.target instanceof Element)
+        stay(event.target.closest('a, area'))
+    },
+    true,
+  )
+  document.addEventListener('submit', (event) => stay(event.target as HTMLFormElement), true)
 }
 
 function chromePath(explicit?: string): string {

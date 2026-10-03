@@ -9,7 +9,7 @@ export async function readItems(path: string, sheet?: string | number): Promise<
   const ext = extname(path).toLowerCase()
   let rows: unknown[][]
   if (ext === '.xlsx') rows = await readSheet(path, sheet ?? 1)
-  else if (ext === '.csv') rows = parseCsv(await readFile(path, 'utf8'))
+  else if (ext === '.csv') rows = parseCsv(decode(await readFile(path)))
   else throw new Error(`Unsupported input file "${path}" (use .xlsx or .csv)`)
 
   const [header, ...body] = rows
@@ -25,10 +25,25 @@ export async function readItems(path: string, sheet?: string | number): Promise<
     })
 }
 
-function cell(value: unknown): string {
+/** Spreadsheet cell as text: a date, or a date-time without time zone, and numbers without float noise. */
+export function cell(value: unknown): string {
   if (value === null || value === undefined) return ''
-  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  if (value instanceof Date) {
+    const iso = new Date(Math.round(value.getTime() / 1000) * 1000).toISOString()
+    return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso.slice(0, 19)
+  }
+  // 15 significant digits drop binary artifacts (0.1 + 0.2 = 0.30000000000000004); integers stay exact.
+  if (typeof value === 'number' && !Number.isInteger(value)) return String(Number(value.toPrecision(15)))
   return String(value)
+}
+
+/** UTF-8 when valid (BOM stripped), otherwise Windows-1252: the encoding of Excel's classic CSV export. */
+export function decode(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes)
+  }
 }
 
 /** RFC 4180 CSV; auto-detects "," or ";" from the first line. */

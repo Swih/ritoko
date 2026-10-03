@@ -17,7 +17,7 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
   })
 
   if (href) {
-    const response = await page.request.get(href)
+    const response = await page.request.get(href, { timeout: 60_000 })
     try {
       if (!response.ok()) throw new Error(`Download failed: HTTP ${response.status()} for ${href}`)
       const disposition = response

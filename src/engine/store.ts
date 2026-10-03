@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { z } from 'zod'
 import { paths } from './paths.ts'
-import { type Step, Target, Workflow, type WorkflowInput } from './schema.ts'
+import { type Step, Target, Workflow } from './schema.ts'
 import { references } from './template.ts'
 
 /** Workflows are plain JSON files in ~/.ritoko/workflows, versioned on every save. */
@@ -33,8 +34,8 @@ export class Store {
   }
 
   /** Validates, bumps the version and writes. Returns warnings worth showing to the author. */
-  async save(input: WorkflowInput): Promise<{ workflow: Workflow; warnings: string[] }> {
-    const parsed = Workflow.parse(input)
+  async save(input: unknown): Promise<{ workflow: Workflow; warnings: string[] }> {
+    const parsed = parseWorkflow(input)
     const previous = await this.get(parsed.name).catch(() => undefined)
     const workflow = { ...parsed, version: (previous?.version ?? 0) + 1 }
     const warnings = check(workflow)
@@ -58,6 +59,14 @@ export class Store {
     step.target = Target.parse(target)
     return (await this.save(workflow)).workflow
   }
+}
+
+/** Parses a workflow, with one short "path: problem" line per error instead of a raw zod dump. */
+export function parseWorkflow(input: unknown): Workflow {
+  const result = Workflow.safeParse(input)
+  if (result.success) return result.data
+  const lines = result.error.issues.map((i) => `- ${z.core.toDotPath(i.path) || 'workflow'}: ${i.message}`)
+  throw new Error(`Invalid workflow:\n${lines.join('\n')}`)
 }
 
 /** Structural errors throw; quality issues come back as warnings. */
@@ -87,7 +96,12 @@ export function check(wf: Workflow): string[] {
     throw new Error('A write batch needs one commit; use readOnly for exports or reads')
   const commitIndex = wf.item.findIndex((s) => s.commit)
   const checks = wf.item.slice(commitIndex + 1).filter((s) => s.do === 'expect')
-  if (wf.item.length && !checks.length) throw new Error('An item needs an expect after its commit')
+  if (wf.item.length && !checks.length)
+    throw new Error(
+      commitIndex >= 0
+        ? 'An item needs an expect after its commit'
+        : 'An item needs an expect checking its result',
+    )
   if (
     commitIndex >= 0 &&
     wf.item.slice(commitIndex + 1).some((s) => !['expect', 'wait', 'download', 'extract'].includes(s.do))
@@ -124,12 +138,6 @@ export function check(wf: Workflow): string[] {
   walk(wf.teardown, false)
 
   const warnings: string[] = []
-  if (wf.item.length && !wf.item.some((s) => s.do === 'expect'))
-    warnings.push('No "expect" step in item: results will not be verified.')
-  if (wf.item.some((s) => s.do === 'click') && !wf.item.some((s) => s.commit))
-    warnings.push(
-      'No step marked "commit": interrupted items will be replayed from scratch. Mark the submit click.',
-    )
   for (const s of all)
     if ('target' in s && s.target?.primary.by === 'css' && /\[id=|#/.test(s.target.primary.css))
       warnings.push(

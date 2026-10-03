@@ -10,7 +10,9 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { Browser } from '../src/engine/browser.ts'
 import { download } from '../src/engine/download.ts'
 import { Ledger } from '../src/engine/ledger.ts'
+import { candidates, resolve as locate } from '../src/engine/locate.ts'
 import { Runner } from '../src/engine/runner.ts'
+import type { Selector } from '../src/engine/schema.ts'
 import { Store } from '../src/engine/store.ts'
 import { lab } from './support/lab.ts'
 
@@ -238,6 +240,63 @@ describe('Chrome and real server effects', () => {
     expect(f.site.submissions).toHaveLength(2)
   })
 
+  it('holds writes answered by an error page for review and continues the batch', async () => {
+    const f = await fixture(2)
+    const status = { primary: { by: 'role' as const, role: 'status' }, fallbacks: [] }
+    await f.store.save({
+      ...f.wf,
+      item: f.wf.item.map((s) => (s.id === 'verify' ? { ...s, target: status } : s)),
+    })
+    f.site.failWithServerError()
+    const result = await f.runner.start(f.wf.name, { input: f.input })
+    expect(result.status).toBe('partial')
+    expect(result.report.items.map((i) => [i.status, i.cause])).toEqual([
+      ['review', 'verification'],
+      ['review', 'verification'],
+    ])
+    expect(f.site.submissions).toHaveLength(2)
+  })
+
+  it('keeps a commit click that could not start retryable', async () => {
+    const f = await fixture(1)
+    await f.store.save({
+      ...f.wf,
+      item: f.wf.item.map((s) => (s.id === 'submit' ? { ...s, timeoutMs: 500 } : s)),
+    })
+    f.site.coverForm(true)
+    const first = await f.runner.start(f.wf.name, { input: f.input })
+    expect(first.report.counts).toEqual({ failed: 1 })
+    f.site.coverForm(false)
+    expect((await f.runner.resume(first.report.runId)).status).toBe('done')
+    expect(f.site.submissions).toHaveLength(1)
+  })
+
+  it('answers dialogs explicitly, fills contenteditable fields and opens hover menus', async () => {
+    const f = await fixture(1)
+    const role = (role: string, name: string) => ({ primary: { by: 'role', role, name }, fallbacks: [] })
+    const save = (onDialog?: 'accept') =>
+      f.store.save({
+        name: 'widgets',
+        description: 'Lab widgets',
+        setup: [
+          { do: 'goto', url: `${f.site.url}/widgets` },
+          { do: 'fill', target: role('textbox', 'Note'), value: 'Hello' },
+          { do: 'expect', target: role('textbox', 'Note'), value: 'Hello' },
+          { do: 'click', target: role('button', 'Delete'), onDialog },
+          { do: 'expect', text: 'Deleted', timeoutMs: 1000 },
+          { do: 'hover', target: { primary: { by: 'text', text: 'Menu' } } },
+          { do: 'click', target: role('link', 'Archive'), timeoutMs: 1000 },
+          { do: 'expect', text: 'Archived', timeoutMs: 1000 },
+        ],
+      })
+    await save()
+    const unexpected = await f.runner.start('widgets')
+    expect(unexpected.status).toBe('stopped')
+    expect(unexpected.report.message).toMatch(/Unexpected confirm dialog "Delete record\?"/)
+    await save('accept')
+    expect((await f.runner.start('widgets')).status).toBe('done')
+  })
+
   it('shares Chrome across clients without closing the other connection', async () => {
     const f = await fixture(1)
     const first = await f.browser.page()
@@ -317,6 +376,64 @@ describe('Chrome and real server effects', () => {
     const file = await download(page, page.getByRole('link', { name: 'Export' }), f.root)
     expect(dirname(file)).toBe(f.root)
     expect(readFileSync(file, 'utf8')).toContain('a@example.test')
+  })
+
+  it('follows a link that targets a new tab in the single working tab', async () => {
+    const f = await fixture(3)
+    await f.store.save({
+      ...f.wf,
+      item: [
+        { id: 'list', do: 'goto', url: '{{param.base}}/tabs' },
+        {
+          id: 'open-form',
+          do: 'click',
+          target: { primary: { by: 'role', role: 'link', name: 'New customer' }, fallbacks: [] },
+        },
+        ...f.wf.item.slice(1),
+      ],
+    })
+    const result = await f.runner.start(f.wf.name, { input: f.input })
+    expect(result.status).toBe('done')
+    expect(result.report.durationMs).toBeLessThan(10_000)
+    expect(result.report.items.every((i) => i.evidence)).toBe(true)
+    expect((await f.browser.page()).context().pages()).toHaveLength(1)
+    expect(f.site.submissions).toHaveLength(3)
+  })
+
+  it('keeps session cookies when Chrome restarts', async () => {
+    const f = await fixture(1)
+    await (await f.browser.page()).goto(`${f.site.url}/login`)
+    await f.browser.shutdown()
+    const page = await f.browser.page()
+    await page.goto(`${f.site.url}/whoami`)
+    expect(await page.innerText('body')).toBe('session=1; remember=1')
+    expect(page.context().pages()).toHaveLength(1)
+  })
+
+  it('records unlabeled checkboxes, and controls inside an iframe', async () => {
+    const f = await fixture(0)
+    const page = await f.browser.page()
+    const checkboxes = async () =>
+      [...(await page.ariaSnapshot({ mode: 'ai' })).matchAll(/- checkbox\b.*\[ref=(\w+)\]/g)].map(
+        (m) => m[1] as string,
+      )
+    await page.goto(`${f.site.url}/checkboxes`)
+    const [first, second, loose] = await checkboxes()
+    expect((await candidates(page, first as string)).selectors[0]).toEqual({
+      by: 'xpath',
+      xpath:
+        "//input[@type='checkbox'][following-sibling::node()[normalize-space()][1][normalize-space()='checkbox 1']]",
+    })
+    expect((await candidates(page, second as string)).fragile).toBeUndefined()
+    expect(await candidates(page, loose as string)).toEqual({
+      selectors: [{ by: 'css', css: 'html > body > p > input:nth-of-type(1)' }],
+      fragile: true,
+    })
+    await page.goto(`${f.site.url}/framed`)
+    const framed = await candidates(page, (await checkboxes())[1] as string)
+    expect(framed.frame).toBe('iframe[title="Settings"]')
+    const target = { frame: framed.frame, primary: framed.selectors[0] as Selector, fallbacks: [] }
+    expect(await (await locate(page, target)).locator.isChecked()).toBe(true)
   })
 
   it('survives killing the CLI after server acceptance: ten unique sends and one review', async () => {

@@ -3,6 +3,7 @@ import { access } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Browser } from './browser.ts'
+import { withDialogs } from './dialog.ts'
 import { download } from './download.ts'
 import { extract } from './extract.ts'
 import { readItems } from './items.ts'
@@ -14,6 +15,10 @@ import { check, type Store } from './store.ts'
 import { references, render, type Scope } from './template.ts'
 
 const MAX_CONSECUTIVE_FAILURES = 3
+
+/** Value of an input, textarea or select, or the text of a contenteditable field. */
+const fieldValue = (field: Locator) => field.inputValue().catch(() => field.innerText())
+const normalize = (s: string) => s.replace(/\s+/g, ' ')
 
 export class VerificationError extends Error {}
 
@@ -86,7 +91,7 @@ export class Runner {
     for (const [key, spec] of Object.entries(wf.params)) {
       const value = params[key] ?? spec.default
       if (spec.required && (value === undefined || !value.trim()))
-        throw new Error(`Missing param "${key}": ${spec.description}`)
+        throw new Error(`Missing param "${key}"${spec.description ? `: ${spec.description}` : ''}`)
       if (value !== undefined) resolved[key] = value
     }
     const unknown = Object.keys(params).filter((k) => !(k in wf.params))
@@ -208,7 +213,7 @@ export class Runner {
       version: run.version,
       status: run.status,
       message: run.message,
-      durationMs: Date.parse(run.finishedAt ?? new Date().toISOString()) - Date.parse(run.startedAt),
+      durationMs: run.activeMs,
       counts,
       items: items.map(({ idx, key, status, cause, message, evidence }) => ({
         idx,
@@ -371,7 +376,8 @@ export class Runner {
       }
 
       scope.item = item.data
-      let committed = item.status === 'paused' && item.committed
+      const resumed = item.status === 'paused' && item.committed
+      let committed = resumed
       const from = committed && live ? wf.item.findIndex((s) => s.id === item.stepId) : 0
       if (from < 0 || (committed && from <= wf.item.findIndex((s) => s.commit))) {
         update({
@@ -394,7 +400,12 @@ export class Runner {
             }
           })
         } catch (error) {
-          if (error instanceof SelectorError) {
+          // After commit, a missing target pauses for repair only on the run's first submitted item, once.
+          // Elsewhere it means the site answered differently (e.g. an error page): review and continue.
+          const repairable =
+            !committed ||
+            (!resumed && !this.ledger.items(run.id).some((i) => i.committed && i.idx !== item.idx))
+          if (error instanceof SelectorError && repairable) {
             update({
               status: 'paused',
               message: error.message,
@@ -402,7 +413,8 @@ export class Runner {
             })
             return { stepId: step.id, error }
           }
-          const cause: Cause = error instanceof VerificationError ? 'verification' : 'system'
+          const cause: Cause =
+            error instanceof VerificationError || error instanceof SelectorError ? 'verification' : 'system'
           update({
             status: committed ? 'review' : 'failed',
             cause,
@@ -433,6 +445,12 @@ export class Runner {
   }
 
   async #step(runId: string, step: Step, page: Page, scope: Scope, beforeAction = () => {}): Promise<void> {
+    await withDialogs(page, 'onDialog' in step ? step : {}, () =>
+      this.#act(runId, step, page, scope, beforeAction),
+    )
+  }
+
+  async #act(runId: string, step: Step, page: Page, scope: Scope, beforeAction: () => void): Promise<void> {
     const text = (s: string) => render(s, scope)
     const cacheKey = `${runId}:${step.id}`
     const locate = async (state: 'visible' | 'attached' = 'visible') => {
@@ -457,16 +475,22 @@ export class Runner {
         return
       case 'click': {
         const element = await locate()
+        const timeout = step.timeoutMs ?? 10_000
+        // Actionability check without clicking: a covered or disabled target fails before the commit point.
+        await element.click({ trial: true, timeout })
         beforeAction()
-        await element.click({ timeout: step.timeoutMs ?? 10_000 })
+        await element.click({ timeout })
         return
       }
+      case 'hover':
+        await (await locate()).hover({ timeout: step.timeoutMs ?? 10_000 })
+        return
       case 'fill': {
         const field = await locate()
         const value = text(step.value)
         await field.fill(value)
-        if ((await field.inputValue()) !== value)
-          throw new VerificationError(`Field did not keep the value "${value}"`)
+        if ((await fieldValue(field)) !== value)
+          throw new VerificationError(`Field did not keep the filled value (${step.id})`)
         return
       }
       case 'select':
@@ -477,9 +501,10 @@ export class Runner {
         return
       case 'press': {
         const element = step.target ? await locate() : undefined
+        // Focus first so that a failure to reach the target happens before the commit point.
+        await element?.focus({ timeout: step.timeoutMs ?? 10_000 })
         beforeAction()
-        if (element) await element.press(step.key, { timeout: step.timeoutMs ?? 10_000 })
-        else await page.keyboard.press(step.key)
+        await page.keyboard.press(step.key)
         return
       }
       case 'upload': {
@@ -530,9 +555,18 @@ export class Runner {
     if (step.text !== undefined) {
       const wanted = text(step.text)
       if (!wanted.trim()) fail('nonempty verification text')
-      const scopeLoc = step.target ? await locate() : page.locator('body')
+      const contains = async (scope: Locator) =>
+        normalize(await scope.innerText()).includes(normalize(wanted))
+      const body = page.locator('body')
+      // Text absent from the whole page fails verification even if the target is missing: a repair cannot help.
+      const scopeLoc = step.target
+        ? await locate().catch(async (error) => {
+            if (error instanceof SelectorError && !(await contains(body))) fail(`text "${wanted}"`)
+            throw error
+          })
+        : body
       const deadline = Date.now() + timeout
-      while (!(await scopeLoc.innerText()).replace(/\s+/g, ' ').includes(wanted.replace(/\s+/g, ' '))) {
+      while (!(await contains(scopeLoc))) {
         if (Date.now() >= deadline) fail(`text "${wanted}"`)
         await page.waitForTimeout(100)
       }
@@ -541,8 +575,8 @@ export class Runner {
       const wanted = text(step.value)
       const field = await locate()
       const deadline = Date.now() + timeout
-      while ((await field.inputValue()) !== wanted) {
-        if (Date.now() > deadline) fail(`value "${wanted}"`)
+      while ((await fieldValue(field)) !== wanted) {
+        if (Date.now() > deadline) fail(`the expected value in ${step.id}`)
         await page.waitForTimeout(200)
       }
     }

@@ -98,4 +98,8 @@ pnpm test
 pnpm test:e2e # real Chrome, local server, isolated profiles and a killed CLI process
 ```
 
+## Credits
+
+Built by [Swih](https://github.com/Swih) together with Claude (Anthropic) and Codex (OpenAI): both agents wrote, reviewed and audited code in this repository, and are credited as co-authors in its history.
+
 MIT © Swih

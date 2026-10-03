@@ -5,7 +5,7 @@
     {
       "name": "ritoko",
       "source": { "source": "local", "path": "./" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL", "products": ["codex-app", "codex-cli"] },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL", "products": ["CODEX"] },
       "category": "Productivity"
     }
   ]

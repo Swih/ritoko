@@ -2,10 +2,8 @@
   "mcpServers": {
     "ritoko": {
       "command": "node",
-      "args": [
-        "${CLAUDE_PLUGIN_ROOT}/bin/ritoko.mjs",
-        "mcp"
-      ]
+      "args": ["./bin/ritoko.mjs", "mcp"],
+      "cwd": "."
     }
   }
 }

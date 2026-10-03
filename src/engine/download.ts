@@ -125,7 +125,7 @@ export function destination(
   )
     throw new Error('saveAs must be a plain filename, without directories or reserved characters')
   const safe = cleanName(suggested)
-  const requested = (clean && saveAs ? cleanName(saveAs) : saveAs) || safe || 'download'
+  const requested = (saveAs && cleanName(saveAs)) || safe || 'download'
   const name = extname(requested) ? requested : cleanName(requested + extname(safe))
   const ext = extname(name)
   for (let n = 1; ; n++) {

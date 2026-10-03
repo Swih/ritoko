@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
-    "check":"biome check . && tsc --noEmit",
+    "check": "biome check . && tsc --noEmit",
     "fix": "biome check --write .",
     "test": "vitest run --configLoader native",
     "test:e2e": "vitest run --config vitest.e2e.config.ts --configLoader native",

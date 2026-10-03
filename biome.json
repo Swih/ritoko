@@ -6,6 +6,7 @@
       "!dist",
       "!node_modules",
       "!.ritoko",
+      "!.claude",
       "!**/*.json",
       "!site/**/*.html",
       "!site/**/*.css"

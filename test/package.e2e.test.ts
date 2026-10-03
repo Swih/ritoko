@@ -30,7 +30,11 @@ function npmCli() {
     ...(process.env.PATH ?? '').split(delimiter).map((entry) => join(entry, suffix)),
     '/usr/share/nodejs/npm/bin/npm-cli.js',
   ]
-  const cli = candidates.find((candidate): candidate is string => !!candidate && existsSync(candidate))
+  // pnpm/yarn also set npm_execpath; only npm's own CLI implements npm pack --json.
+  const cli = candidates.find(
+    (candidate): candidate is string =>
+      !!candidate && basename(candidate) === 'npm-cli.js' && existsSync(candidate),
+  )
   if (!cli) throw new Error('Cannot find npm-cli.js for packaged distribution test')
   return cli
 }

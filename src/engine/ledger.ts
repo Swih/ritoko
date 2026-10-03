@@ -91,6 +91,22 @@ type ItemRecord = {
   vars: string
 }
 
+const itemRow = (r: ItemRecord): ItemRow => ({
+  runId: r.run_id,
+  idx: r.idx,
+  key: r.key,
+  data: JSON.parse(r.data),
+  status: r.status,
+  step: r.step,
+  stepId: r.step_id,
+  committed: r.committed === 1,
+  cause: r.cause,
+  message: r.message,
+  evidence: r.evidence,
+  attempts: r.attempts,
+  vars: JSON.parse(r.vars),
+})
+
 const now = () => new Date().toISOString()
 /** A lease holder refreshes its heartbeat this often; a lease silent for LEASE_EXPIRY_MS is abandoned. */
 const HEARTBEAT_MS = 5_000
@@ -136,6 +152,7 @@ export class Ledger {
         run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL, detail TEXT NOT NULL, at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS items_business_key ON items(key);
+      CREATE INDEX IF NOT EXISTS items_run_status ON items(run_id, status, idx);
     `)
     this.transaction(() => {
       for (const [table, additions] of Object.entries({
@@ -341,24 +358,26 @@ export class Ledger {
     })
   }
 
-  items(runId: string): ItemRow[] {
-    return (
-      this.db.prepare('SELECT * FROM items WHERE run_id = ? ORDER BY idx').all(runId) as ItemRecord[]
-    ).map((r) => ({
-      runId: r.run_id,
-      idx: r.idx,
-      key: r.key,
-      data: JSON.parse(r.data),
-      status: r.status,
-      step: r.step,
-      stepId: r.step_id,
-      committed: r.committed === 1,
-      cause: r.cause,
-      message: r.message,
-      evidence: r.evidence,
-      attempts: r.attempts,
-      vars: JSON.parse(r.vars),
-    }))
+  items(runId: string, status?: ItemStatus): ItemRow[] {
+    const rows = status
+      ? this.db.prepare('SELECT * FROM items WHERE run_id = ? AND status = ? ORDER BY idx').all(runId, status)
+      : this.db.prepare('SELECT * FROM items WHERE run_id = ? ORDER BY idx').all(runId)
+    return (rows as ItemRecord[]).map(itemRow)
+  }
+
+  item(runId: string, idx: number): ItemRow {
+    const row = this.db.prepare('SELECT * FROM items WHERE run_id = ? AND idx = ?').get(runId, idx) as
+      | ItemRecord
+      | undefined
+    if (!row) throw new Error(`Unknown item ${idx} in run ${runId}`)
+    return itemRow(row)
+  }
+
+  nextItem(runId: string, status: ItemStatus): ItemRow | undefined {
+    const row = this.db
+      .prepare('SELECT * FROM items WHERE run_id = ? AND status = ? ORDER BY idx LIMIT 1')
+      .get(runId, status) as ItemRecord | undefined
+    return row && itemRow(row)
   }
 
   updateItem(

@@ -420,7 +420,7 @@ export class Host {
     }
     this.#finished(ctx)
     // Running items the batch did not mention were lost with it (a crash between the journal and the hand-out).
-    for (const item of this.ledger.items(runId))
+    for (const item of this.ledger.items(runId, 'running'))
       if (item.status === 'running' && !mentioned.has(item.idx) && !state.cursors[item.idx]?.handoff)
         this.#interrupted(ctx, item, state.cursors[item.idx] ?? { step: 0, waitedMs: 0 })
   }
@@ -455,15 +455,17 @@ export class Host {
         : { status: 'failed', cause, message: scope ? mask(message, scope) : message },
     )
     this.#scopes.delete(`${ctx.runId}:${item.idx}`)
+    delete ctx.state.cursors[item.idx]
   }
 
   /** Items whose steps are all run and whose file, if any, is in. */
   #finished(ctx: Context): void {
-    for (const item of this.ledger.items(ctx.runId)) {
+    for (const item of this.ledger.items(ctx.runId, 'running')) {
       const cursor = ctx.state.cursors[item.idx]
       if (item.status === 'running' && cursor && cursor.step >= ctx.wf.item.length && !cursor.handoff) {
         this.ledger.updateItem(ctx.runId, item.idx, { status: 'done', cause: null, message: null })
         this.#scopes.delete(`${ctx.runId}:${item.idx}`)
+        delete ctx.state.cursors[item.idx]
       }
     }
   }
@@ -472,7 +474,7 @@ export class Host {
   #collect(ctx: Context): void {
     const { runId, state } = ctx
     const waiting = this.ledger
-      .items(runId)
+      .items(runId, 'running')
       .filter((i) => i.status === 'running' && state.cursors[i.idx]?.handoff?.clicked)
     if (!waiting.length) return
     const text = this.io.clipboard.read()
@@ -481,13 +483,19 @@ export class Host {
       const handoff = cursor.handoff as Handoff
       const prefix = `RITOKO|${handoff.token}|`
       if (text.startsWith(prefix)) {
+        try {
+          const file = this.#receive(ctx, item, handoff, text.slice(prefix.length))
+          this.ledger.updateRun(runId, {
+            files: { ...this.ledger.run(runId).files, [file.name]: file.path, [file.key]: file.path },
+          })
+          this.ledger.updateItem(runId, item.idx, { evidence: file.path })
+          cursor.handoff = undefined
+        } catch (error) {
+          // A corrupt file or a filesystem error belongs to this row, not the other lanes.
+          this.#fail(ctx, item, (error as Error).message, 'system')
+        }
+        // Validate and save before clearing the receipt. A restoration failure still stops the call.
         if (handoff.clipboard !== undefined) this.#restore(handoff.clipboard)
-        const file = this.#receive(ctx, item, handoff, text.slice(prefix.length))
-        this.ledger.updateRun(runId, {
-          files: { ...this.ledger.run(runId).files, [file.name]: file.path, [file.key]: file.path },
-        })
-        this.ledger.updateItem(runId, item.idx, { evidence: file.path })
-        cursor.handoff = undefined
       } else if (handoff.keep && handoff.tries < 2)
         Object.assign(handoff, { clicked: false, tries: handoff.tries + 1 })
       else this.#fail(ctx, item, 'The file did not reach Ritoko through the hand-off')
@@ -536,9 +544,10 @@ export class Host {
     const { runId, wf, state, entries } = ctx
     for (let slot = 1; slot <= state.parallel; slot++) await this.#lane(ctx, slot)
     if (!entries.length) {
-      const running = this.ledger.items(runId).filter((i) => i.status === 'running')
+      const running = this.ledger.items(runId, 'running')
       if (running.length)
         throw new Error(`Ritoko lost track of items ${running.map((i) => i.key).join(', ')}`)
+      this.#save(runId, state)
       return this.#finish(runId)
     }
     // A page is still there at the next call when nothing in the batch navigates its tab afterwards.
@@ -575,7 +584,7 @@ export class Host {
   async #lane(ctx: Context, slot: number): Promise<void> {
     const { runId, wf, state, entries } = ctx
     const held = this.ledger
-      .items(runId)
+      .items(runId, 'running')
       .find((i) => i.status === 'running' && state.cursors[i.idx]?.slot === slot)
     const cursor = held && state.cursors[held.idx]
     let retired: Cursor | undefined
@@ -619,13 +628,13 @@ export class Host {
   /** An item that lost its tab, else the next pending one that no earlier run settled. */
   #next(ctx: Context): ItemRow | undefined {
     const { runId, run, wf, state } = ctx
-    const lost = this.ledger.items(runId).find((i) => {
+    const lost = this.ledger.items(runId, 'running').find((i) => {
       const cursor = state.cursors[i.idx]
       return i.status === 'running' && !cursor?.handoff && !cursor?.slot && !ctx.used.has(i.idx)
     })
     if (lost) return lost
     for (;;) {
-      const candidate = this.ledger.items(runId).find((i) => i.status === 'pending')
+      const candidate = this.ledger.nextItem(runId, 'pending')
       if (!candidate) return undefined
       const previous = this.ledger.barrier(wf.name, run.scope, candidate.key, runId)
       if (previous) {
@@ -886,7 +895,7 @@ export class Host {
   }
 
   #item(runId: string, idx: number): ItemRow {
-    return this.ledger.items(runId).find((i) => i.idx === idx) as ItemRow
+    return this.ledger.item(runId, idx)
   }
 
   #state(runId: string): State {

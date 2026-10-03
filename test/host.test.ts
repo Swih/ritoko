@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Host, type HostAction, type HostInput, type HostResponse } from '../src/engine/host.ts'
 import type { HostIo } from '../src/engine/host-io.ts'
 import { Ledger } from '../src/engine/ledger.ts'
@@ -41,9 +41,9 @@ const missed = (at: number, sent: number) => ({
   sent,
 })
 
-async function setup(patch: Partial<WorkflowInput> = {}, rows = 3) {
+async function setup(patch: Partial<WorkflowInput> = {}, rows = 3, options: { memory?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'ritoko-host-'))
-  const ledger = new Ledger(join(root, 'journal.db'))
+  const ledger = new Ledger(options.memory ? ':memory:' : join(root, 'journal.db'))
   resources.push({ root, ledger })
   mkdirSync(join(root, 'inbox'))
   const input = join(root, 'inbox', 'input.csv')
@@ -97,6 +97,52 @@ const programs = (r: HostResponse) =>
   r.actions.filter((a): a is Extract<HostAction, { type: 'run_js' }> => a.type === 'run_js')
 
 describe('host mode batches', () => {
+  it('processes a thousand API rows without materializing the whole batch for each item', async () => {
+    const rows = 1000
+    const f = await setup(
+      {
+        readOnly: true,
+        item: [
+          {
+            id: 'read',
+            do: 'http',
+            url: 'https://api.example.test/check',
+            expect: { status: [200] },
+          },
+        ],
+      },
+      rows,
+      { memory: true },
+    )
+    const request = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response('{}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    )
+    const original = f.ledger.items.bind(f.ledger)
+    let materialized = 0
+    const reads = vi.spyOn(f.ledger, 'items').mockImplementation((...args) => {
+      const values = original(...args)
+      materialized += values.length
+      return values
+    })
+    try {
+      const done = await f.start()
+      expect(done.done?.counts).toEqual({ done: rows })
+      expect(request).toHaveBeenCalledTimes(rows)
+      expect(f.pages).toEqual([])
+      expect(materialized).toBeLessThan(rows * 10)
+      const state = JSON.parse(
+        String(f.ledger.db.prepare('SELECT state FROM host_state WHERE run_id = ?').get(done.runId)?.state),
+      )
+      expect(state.cursors).toEqual({})
+    } finally {
+      request.mockRestore()
+      reads.mockRestore()
+    }
+  })
   it('requires a batch number and refuses malformed or out-of-segment results before changing the journal', async () => {
     const f = await setup({}, 1)
     const first = await f.start()
@@ -489,6 +535,38 @@ describe('downloads', () => {
   const staged = { ok: true, next: 5, sent: 4, staged: { bytes: 4, type: 'image/png' } }
   const payload = (token: string) =>
     `RITOKO|${token}.4|data:image/png;base64,${Buffer.from('PNG!').toString('base64')}`
+
+  it.each(['corrupt payload', 'unwritable folder'])(
+    'isolates a %s from the other download lane',
+    async (failure) => {
+      const f = await setup({ item: generate }, 2)
+      const first = await f.start(2)
+      const click = await f.next(first.runId, { results: [staged, staged] })
+      expect(types(click)).toEqual(['click'])
+      let host = f.host
+      const blocked = join(f.root, 'blocked')
+      if (failure === 'unwritable folder') {
+        writeFileSync(blocked, 'This is a file, not a run folder')
+        host = new Host(f.ledger, f.store, blocked, f.host.io)
+      }
+      f.clipboard.text =
+        failure === 'corrupt payload'
+          ? payload(f.delivered(0).plan.token).replace(
+              Buffer.from('PNG!').toString('base64'),
+              Buffer.from('BAD').toString('base64'),
+            )
+          : payload(f.delivered(0).plan.token)
+      const next = await host.next(first.runId)
+      expect(f.ledger.item(first.runId, 0)).toMatchObject({ status: 'review', cause: 'system' })
+      expect(next.actions[0]).toMatchObject({ type: 'click', tab: 2 })
+      expect(f.clipboard.text).toBe('the user text')
+      if (failure === 'unwritable folder') unlinkSync(blocked)
+      f.clipboard.text = payload(f.delivered(1).plan.token)
+      const done = await host.next(first.runId)
+      expect(done.done).toMatchObject({ status: 'partial', counts: { review: 1, done: 1 } })
+      expect(f.clipboard.text).toBe('the user text')
+    },
+  )
 
   it('transfers parallel downloads one at a time so no file overwrites another clipboard payload', async () => {
     const f = await setup({ item: generate }, 2)

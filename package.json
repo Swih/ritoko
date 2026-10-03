@@ -26,6 +26,8 @@
     "fix": "biome check --write .",
     "test": "vitest run --configLoader native",
     "test:e2e": "vitest run --config vitest.e2e.config.ts --configLoader native",
+    "test:package": "vitest run test/package.e2e.test.ts --config vitest.e2e.config.ts --configLoader native",
+    "release:check": "node scripts/release-check.mjs",
     "mcp": "node src/cli.ts mcp",
     "ritoko": "node src/cli.ts"
   },

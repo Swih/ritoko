@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Ritoko Challenge stage</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#2a3140;--fg:#e6edf3;--dim:#8b95a9}
+*{box-sizing:border-box}
+html,body{margin:0;width:1280px;height:720px;overflow:hidden;background:var(--bg);color:var(--fg);font:14px "Segoe UI",system-ui,sans-serif}
+header{position:absolute;left:24px;right:24px;top:0;height:52px;display:flex;align-items:center;gap:16px}
+header b{font-size:18px;letter-spacing:.3px}
+header .sub{color:var(--dim)}
+#cap{margin-left:auto;background:#2f6fed;color:#fff;font-weight:600;padding:7px 16px;border-radius:999px;font-size:15px}
+#cap.bad{background:#d1453b}#cap.warn{background:#c7791a}#cap.good{background:#238636}
+#browser{position:absolute;left:24px;top:56px;width:780px;height:500px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+#bar{height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:#1d2430;border-bottom:1px solid var(--line)}
+#bar i{width:10px;height:10px;border-radius:50%;background:#46506a}
+#url{margin-left:10px;flex:1;background:#0d1117;border-radius:6px;padding:2px 10px;color:var(--dim);font:12px Consolas,monospace}
+#shot{display:block;width:780px;height:469px;object-fit:cover;background:#fff}
+#term{position:absolute;left:820px;top:56px;width:436px;height:500px;background:#0b0f15;border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+#term .tb{height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:#1d2430;color:var(--dim);font-size:12px;flex:none}
+#term .tb i{width:10px;height:10px;border-radius:50%;background:#46506a}
+#body{flex:1;overflow:hidden;padding:10px 12px;font:12px/16px "Cascadia Mono",Consolas,monospace;display:flex;flex-direction:column;justify-content:flex-end}
+h4{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.6px}
+#journal{position:absolute;left:24px;top:566px;width:1232px}
+#chips{display:grid;grid-template-columns:repeat(10,1fr);gap:6px}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:5px 9px;height:46px}
+.chip small{display:block;color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip b{font-size:13px}
+.chip.done b{color:#7ee787}.chip.review{border-color:#ffb454;background:#ffb4541c}.chip.review b{color:#ffb454}
+.chip.running b{color:#8cb4ff}.chip.running{border-color:#8cb4ff}.chip.pending b{color:#8b95a9}
+.chip.skipped b{color:#79dcf0}.chip.failed b{color:#ff7b72}.chip.paused b{color:#ffb454}
+#tiles{position:absolute;left:24px;top:640px;width:1232px;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px 14px}
+.tile small{display:block;color:var(--dim);font-size:11px}.tile strong{font-size:24px;line-height:1.1}
+.tile.dup strong{color:#7ee787}
+/*TERMCSS*/
+</style></head><body>
+<header><b>Ritoko Challenge</b><span class="sub">real runs, nothing simulated</span><span id="cap">&nbsp;</span></header>
+<div id="browser"><div id="bar"><i></i><i></i><i></i><div id="url">about:blank</div></div><img id="shot" alt=""></div>
+<div id="term"><div class="tb"><i></i><i></i><i></i><span style="margin-left:8px">terminal</span></div><div id="body"></div></div>
+<div id="journal"><h4>Ritoko journal (SQLite, read live)</h4><div id="chips"></div></div>
+<div id="tiles">
+<div class="tile"><small>Server received</small><strong id="t-s">0</strong></div>
+<div class="tile"><small>Accepted</small><strong id="t-a">0</strong></div>
+<div class="tile dup"><small>Duplicates on the server</small><strong id="t-d">0</strong></div>
+<div class="tile"><small>Assets downloaded</small><strong id="t-f">0</strong></div>
+<div class="tile"><small>Challenge timer</small><strong id="t-t">00:00</strong></div></div>
+<script>/*TERMJS*/</script>
+<script>
+const $ = (id) => document.getElementById(id)
+window.stage = {
+  frame(b64) { $('shot').src = `data:image/jpeg;base64,${b64}` },
+  url(u) { $('url').textContent = u },
+  caption(t, kind = '') { const c = $('cap'); c.textContent = t; c.className = kind },
+  clear() { $('body').innerHTML = '' },
+  add(l) { $('body').insertAdjacentHTML('beforeend', RitokoTerm.line(l)) },
+  journal(items) {
+    $('chips').innerHTML = items.map((i) =>
+      `<div class="chip ${i.status}"><small>#${i.idx + 1} ${i.key.split('@')[0]}</small><b>${i.status}</b></div>`).join('')
+  },
+  server(s) {
+    $('t-s').textContent = s.submissions; $('t-a').textContent = s.accepted; $('t-d').textContent = s.duplicates
+    $('t-f').textContent = s.downloads; $('t-t').textContent = new Date(s.elapsedMs).toISOString().slice(14, 19)
+  },
+}
+</script></body></html>

@@ -270,7 +270,9 @@ export class Ledger {
       'INSERT INTO items (run_id, idx, key, data, updated_at) VALUES (?, ?, ?, ?, ?)',
     )
     this.transaction(() => {
-      items.forEach((item, idx) => insert.run(runId, idx, item.key, JSON.stringify(item.data), now()))
+      items.forEach((item, idx) => {
+        insert.run(runId, idx, item.key, JSON.stringify(item.data), now())
+      })
       this.updateRun(runId, { itemsLoaded: true })
     })
   }
@@ -352,7 +354,7 @@ export class Ledger {
   resolve(runId: string, key: string, status: 'done' | 'failed', note: string): void {
     if (!note.trim()) throw new Error('Resolution needs a note describing the check on the site')
     const item = this.items(runId).find((i) => i.key === key)
-    if (!item || item.status !== 'review') throw new Error('Only a review item can be resolved')
+    if (item?.status !== 'review') throw new Error('Only a review item can be resolved')
     if (item.cause === 'duplicate') throw new Error(`Resolve the original run first: ${item.message}`)
     this.transaction(() => {
       this.updateItem(runId, item.idx, {

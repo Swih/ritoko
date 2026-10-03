@@ -47,14 +47,18 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
 }
 
 /** Keeps the real extension (e.g. .xlsx) when saveAs has none: input readers rely on it. */
+// Characters Windows forbids in file names (C0 controls included).
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+const RESERVED = /[<>:"|?*\x00-\x1f]/g
+
 export function destination(dir: string, saveAs: string | undefined, suggested: string): string {
   const safe = basename(win32.basename(suggested))
-    .replace(/[<>:"|?*\x00-\x1f]/g, '_')
+    .replace(RESERVED, '_')
     .replace(/[. ]+$/, '')
   if (
     saveAs &&
     (saveAs !== basename(win32.basename(saveAs)) ||
-      /[<>:"|?*\x00-\x1f]/.test(saveAs) ||
+      saveAs.replace(RESERVED, '_') !== saveAs ||
       /^[. ]+$/.test(saveAs))
   )
     throw new Error('saveAs must be a plain filename, without directories or reserved characters')

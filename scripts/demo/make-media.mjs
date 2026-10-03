@@ -153,7 +153,7 @@ async function rpaChallenge() {
   await delay(800)
   const text = await page.innerText('body')
   const m = text.match(/success rate is (\d+)% \( (\d+) out of (\d+) fields\) in (\d+) milliseconds/)
-  if (!m || m[1] !== '100') throw new Error(`RPA Challenge did not reach 100%: ${text.slice(0, 300)}`)
+  if (m?.[1] !== '100') throw new Error(`RPA Challenge did not reach 100%: ${text.slice(0, 300)}`)
   const shot = await session.send('Page.captureScreenshot', { format: 'png' })
   writeFileSync(join(media, 'rpa-challenge-100.png'), Buffer.from(shot.data, 'base64'))
   facts.rpaChallenge = {
@@ -247,7 +247,7 @@ async function crashDemo() {
     emit(beat, { t: 'cmd', text: `curl -s ${lab.url}/api/count` })
     emit(beat, { t: 'out', text: await curl('/api/count') })
   }
-  const begin = (beat, caption, kind = '') => {
+  const begin = (_beat, caption, kind = '') => {
     call('clear')
     call('caption', caption, kind)
   }
@@ -468,12 +468,10 @@ function RitokoTermLine(l) {
 async function renderTerm(n, lines) {
   const page = await stageBrowser.newPage({ viewport: { width: 1060, height: 400 }, deviceScaleFactor: 2 })
   await page.setContent(termPage(winHtml(lines), RitokoTerm.css))
-  await page
-    .locator('.win')
-    .screenshot({
-      path: join(media, `term-${n}-${['run', 'report', 'resume', 'rerun'][n - 1]}.png`),
-      omitBackground: true,
-    })
+  await page.locator('.win').screenshot({
+    path: join(media, `term-${n}-${['run', 'report', 'resume', 'rerun'][n - 1]}.png`),
+    omitBackground: true,
+  })
   await page.close()
 }
 

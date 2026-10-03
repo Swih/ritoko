@@ -9,7 +9,7 @@ export async function lab() {
   let rejectConfirmation = false
   const html = (body: string) =>
     `<!doctype html><html><head><title>Ritoko Lab</title></head><body>${body}</body></html>`
-  const escape = (s: string) =>
+  const escapeHtml = (s: string) =>
     s.replace(
       /[&<>"']/g,
       (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c,
@@ -55,7 +55,7 @@ export async function lab() {
           html(
             rejectConfirmation
               ? 'Response unavailable'
-              : `<p role="status">Created ${escape(item.Email)}</p>`,
+              : `<p role="status">Created ${escapeHtml(item.Email)}</p>`,
           ),
         )
       return

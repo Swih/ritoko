@@ -1,5 +1,5 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><title>Ritoko demo stage</title>
+<html lang="en"><head><meta charset="utf-8"><title>Ritoko demo stage</title>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--line:#2a3140;--fg:#e6edf3;--dim:#8b95a9}
 *{box-sizing:border-box}
@@ -48,7 +48,7 @@ header .sub{color:var(--dim)}
 const $ = (id) => document.getElementById(id)
 const lines = []
 window.stage = {
-  frame(b64) { $('shot').src = 'data:image/jpeg;base64,' + b64 },
+  frame(b64) { $('shot').src = `data:image/jpeg;base64,${b64}` },
   url(u) { $('url').textContent = u },
   caption(t, kind = '') { const c = $('cap'); c.textContent = t; c.className = kind },
   speed(t) { $('speed').textContent = t },

@@ -1,0 +1,740 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ritoko: record a browser task once, replay it for every row</title>
+  <meta name="description" content="Ritoko turns a web task your coding agent did once into a workflow that replays from Excel or CSV without a model, verifies each item, resumes after a crash and never submits the same row twice. For Claude Code and Codex CLI. MIT.">
+  <link rel="canonical" href="https://ritoko.com/">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f4f0e6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#14130f" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Ritoko">
+  <meta property="og:url" content="https://ritoko.com/">
+  <meta property="og:title" content="Ritoko: record a browser task once, replay it for every row">
+  <meta property="og:description" content="A plugin for Claude Code and Codex CLI. Replays without a model, journals every item, resumes after a crash, holds uncertain submissions for review.">
+  <meta property="og:image" content="https://ritoko.com/assets/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Ritoko: record once, replay forever, resume safely. A ledger of items marked done, review and skipped.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Ritoko: record a browser task once, replay it for every row">
+  <meta name="twitter:description" content="Replays without a model, journals every item, resumes after a crash, never submits the same row twice.">
+  <meta name="twitter:image" content="https://ritoko.com/assets/og.png">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Ritoko",
+    "url": "https://ritoko.com/",
+    "description": "Plugin for Claude Code and Codex CLI that turns a browser task an agent did once into a workflow replayed without a model from Excel or CSV, journaled per item, resumable and protected against double submission.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Windows, macOS, Linux",
+    "softwareVersion": "0.1.0",
+    "softwareRequirements": "Node.js 24 or newer, Google Chrome",
+    "license": "https://opensource.org/licenses/MIT",
+    "isAccessibleForFree": true,
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Swih", "url": "https://github.com/Swih" },
+    "sameAs": ["https://github.com/Swih/ritoko"]
+  }
+  </script>
+
+  <script>
+    try {
+      var t = localStorage.getItem('ritoko-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) {}
+    document.documentElement.classList.add('js');
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" role="banner">
+    <div class="wrap header-row">
+      <a class="brand" href="#top" aria-label="Ritoko, back to top">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
+        <span class="brand-name">Ritoko</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-list">Menu</button>
+        <ul id="nav-list" class="nav-list">
+          <li><a href="#explainer">How it works</a></li>
+          <li><a href="#safety">Safety</a></li>
+          <li><a href="#compare">Compare</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="https://github.com/Swih/ritoko" rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+      <button class="theme-toggle" type="button" aria-label="Switch to dark theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle class="sun" cx="12" cy="12" r="4.5"/>
+          <path class="rays" d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>
+          <path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <svg width="0" height="0" class="defs" aria-hidden="true" focusable="false">
+    <symbol id="mark" viewBox="0 0 32 32">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--stamp)"/>
+      <g fill="var(--stamp-ink)">
+        <rect x="7" y="7.5" width="4.5" height="4.5" rx="1"/>
+        <rect x="14" y="8.75" width="11" height="2" rx="1"/>
+        <rect x="7" y="13.75" width="4.5" height="4.5" rx="1"/>
+        <rect x="14" y="15" width="11" height="2" rx="1"/>
+        <rect x="14" y="21.25" width="7" height="2" rx="1"/>
+      </g>
+      <path d="M9.25 19.6 12 22.25 9.25 24.9 6.5 22.25Z" fill="none" stroke="var(--stamp-ink)" stroke-width="1.6" stroke-linejoin="round"/>
+    </symbol>
+  </svg>
+
+  <main id="main" tabindex="-1">
+
+    <!-- ============ HERO ============ -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><span>v0.1</span><span>MIT</span><span>Claude Code + Codex CLI</span></p>
+          <h1 id="hero-title">Do the browser task once.<br> <em>Replay it for every row.</em></h1>
+          <p class="lede">Ritoko turns a web task your coding agent solved once into a workflow that replays from your spreadsheet without a model, checks every item, survives a crash and never submits the same row twice.</p>
+
+          <div class="installer" data-tabs>
+            <div class="tabs" role="tablist" aria-label="Choose your agent">
+              <button role="tab" id="tab-hero-claude" aria-selected="true" aria-controls="panel-hero-claude" type="button">Claude Code</button>
+              <button role="tab" id="tab-hero-codex" aria-selected="false" aria-controls="panel-hero-codex" tabindex="-1" type="button">Codex CLI</button>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="panel-hero-claude" aria-labelledby="tab-hero-claude">
+              <div class="cmd">
+                <span class="prompt" aria-hidden="true">$</span>
+                <code>claude plugin marketplace add Swih/ritoko &amp;&amp; claude plugin install ritoko@ritoko</code>
+                <button class="copy" type="button" data-copy>Copy</button>
+              </div>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="panel-hero-codex" aria-labelledby="tab-hero-codex" hidden>
+              <div class="cmd">
+                <span class="prompt" aria-hidden="true">$</span>
+                <code>codex plugin marketplace add Swih/ritoko</code>
+                <button class="copy" type="button" data-copy>Copy</button>
+              </div>
+            </div>
+            <p class="install-note"><span class="chip chip--review">At public launch</span> The repository is private for now. Needs Node 24+ and Google Chrome.</p>
+          </div>
+
+          <p class="hero-links">
+            <a class="link-arrow" href="#explainer">See the four beats</a>
+            <a class="link-arrow" href="#compare">Why not a Playwright script?</a>
+          </p>
+        </div>
+
+        <figure class="demo">
+          <div class="window">
+            <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>ritoko · demo</span></div>
+            <video controls preload="metadata" playsinline width="1280" height="720" poster="assets/media/poster.png" aria-describedby="demo-caption">
+              <source src="assets/media/demo.webm" type="video/webm">
+              <source src="assets/media/demo.mp4" type="video/mp4">
+              <p>Your browser cannot play this video. <a href="assets/media/demo.mp4">Download the demo (MP4)</a>.</p>
+            </video>
+          </div>
+          <figcaption id="demo-caption">Real time, unedited, <span data-fact="video.durationSeconds" data-fmt="int">34</span>&nbsp;s. A batch of 10 customers is killed with SIGKILL at row 5, resumed, then run again. The local test back office ends with 10 submissions, 10 unique, and row 5 waiting for a human check.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============ EXPLAINER ============ -->
+    <section class="section explainer-section" id="explainer" aria-labelledby="explainer-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 01</p>
+          <h2 id="explainer-title">Record once. Replay forever. Resume safely.</h2>
+          <p class="section-lede">Every row of your spreadsheet becomes an item in a journal. Here is what happens to those items, in four beats.</p>
+        </header>
+
+        <div class="explainer" data-explainer>
+          <ol class="beats">
+            <li>
+              <button type="button" class="beat" data-beat="0" aria-controls="stage">
+                <span class="beat-num">1</span>
+                <span class="beat-title">Record</span>
+              </button>
+              <p class="beat-text">Your agent does the task once in Ritoko's Chrome window. Every action becomes a step with a selector built from role, label or visible text, checked to be unique on the page. One step is marked <code>commit</code>: the point of no return.</p>
+            </li>
+            <li>
+              <button type="button" class="beat" data-beat="1" aria-controls="stage">
+                <span class="beat-num">2</span>
+                <span class="beat-title">Replay</span>
+              </button>
+              <p class="beat-text">Playwright replays the workflow for each row, with no model in the loop. Each item is verified with <code>expect</code> and written to a SQLite journal as <span class="chip chip--done">done</span>.</p>
+            </li>
+            <li>
+              <button type="button" class="beat" data-beat="2" aria-controls="stage">
+                <span class="beat-num">3</span>
+                <span class="beat-title">Crash</span>
+              </button>
+              <p class="beat-text">The process is killed while row 5 is past its commit. The journal still says <span class="chip chip--running">running</span> with the commit recorded, so nobody can tell whether the site received it.</p>
+            </li>
+            <li>
+              <button type="button" class="beat" data-beat="3" aria-controls="stage">
+                <span class="beat-num">4</span>
+                <span class="beat-title">Resume</span>
+              </button>
+              <p class="beat-text">On resume, row 5 becomes <span class="chip chip--review">review</span>: it is never replayed blindly. The rows left run normally. Run the same spreadsheet again later and every finished row is <span class="chip chip--skipped">skipped</span>, while row 5 stays held until someone checks the site.</p>
+            </li>
+          </ol>
+          <p class="beat-caption" data-beat-caption></p>
+
+          <figure class="stage" id="stage">
+            <div class="stage-canvas" data-stage>
+              <p class="stage-nojs">The animated diagram needs JavaScript. The four beats are described alongside.</p>
+            </div>
+            <figcaption class="stage-bar">
+              <span class="stage-status" data-stage-status aria-live="off">Journal: 8 rows pending</span>
+              <span class="stage-controls">
+                <button type="button" class="btn-ghost" data-stage-play aria-label="Pause animation">Pause</button>
+                <button type="button" class="btn-ghost" data-stage-replay>Replay</button>
+              </span>
+            </figcaption>
+          </figure>
+        </div>
+        <p class="legend"><span class="visually-hidden">Item states:</span>
+          <span class="chip chip--pending">pending</span>
+          <span class="chip chip--running">running</span>
+          <span class="chip chip--done">done</span>
+          <span class="chip chip--review">review</span>
+          <span class="chip chip--skipped">skipped</span>
+          <span class="legend-note">The row keys are illustrative. The state rules are the engine's.</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ PROOF ============ -->
+    <section class="section proof-section" id="proof" aria-labelledby="proof-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 02</p>
+          <h2 id="proof-title">On the record</h2>
+          <p class="section-lede">Measured on <span data-fact="date" data-fmt="date">3 October 2026</span> with Ritoko <span data-fact="ritokoVersion">0.1.0</span>, Node <span data-fact="node" data-fmt="node">24.19</span>, Chrome <span data-fact="chrome" data-fmt="major">154</span> (headless) on Windows. Counts come from the run journal and from the sites' own counters.</p>
+        </header>
+
+        <dl class="facts">
+          <div class="fact">
+            <dt>100%</dt>
+            <dd><strong>RPA Challenge, replayed without a model.</strong> <span data-fact="rpaChallenge.fields">70</span>/<span data-fact="rpaChallenge.fields">70</span> fields over <span data-fact="rpaChallenge.rows">10</span> shuffled rounds in <span data-fact="rpaChallenge.siteReportedMs" data-fmt="s2">1.74</span>&nbsp;s by the site's own timer, <span data-fact="rpaChallenge.cliWallClockMs" data-fmt="s1">3.6</span>&nbsp;s end to end including the workbook download. Codex CLI recorded the challenge through Ritoko by itself.</dd>
+          </div>
+          <div class="fact">
+            <dt><span data-fact="crashDemo.uniqueSubmissions">10</span>/<span data-fact="crashDemo.submissionsReceived">10</span></dt>
+            <dd><strong>Unique submissions after a hard kill.</strong> A batch of <span data-fact="crashDemo.rows">10</span> was killed with SIGKILL at row <span data-fact="crashDemo.killedAtRow">5</span>, then resumed. The back office received <span data-fact="crashDemo.submissionsReceived">10</span> submissions, <span data-fact="crashDemo.uniqueSubmissions">10</span> unique. Row <span data-fact="crashDemo.killedAtRow">5</span> had already gone through; it was held as <span class="chip chip--review">review</span> instead of being sent again.</dd>
+          </div>
+          <div class="fact">
+            <dt><span data-fact="rerun.line" data-fmt="journal">0.1</span>&nbsp;s</dt>
+            <dd><strong>Rerunning the same CSV.</strong> <span data-fact="crashDemo.resumedRunCounts.done">9</span> rows skipped as already done, row <span data-fact="crashDemo.killedAtRow">5</span> still held for review, nothing submitted again. <span data-fact="rerun.line" data-fmt="journal">0.1</span>&nbsp;s in the journal, <span data-fact="rerun.wallClockMs" data-fmt="s1">0.6</span>&nbsp;s wall clock. No model call during any replay.</dd>
+          </div>
+        </dl>
+
+        <div class="shots">
+          <figure class="shot">
+            <img src="assets/media/rpa-challenge-100.png" width="1280" height="720" alt="RPA Challenge page after the replay: Congratulations! Your success rate is 100% (70 out of 70 fields)." loading="lazy" decoding="async">
+            <figcaption>rpachallenge.com after a model-free replay, with the time measured by the site itself.</figcaption>
+          </figure>
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/media/lab-batch.webp" type="image/webp">
+              <img src="assets/media/lab-batch.png" width="3200" height="2000" alt="Local test back office after the killed and resumed batch: 10 submissions received, 10 unique emails, one row per customer." loading="lazy" decoding="async">
+            </picture>
+            <figcaption>The local test back office after the killed batch was resumed: 10 received, 10 unique.</figcaption>
+          </figure>
+        </div>
+
+        <div class="term-walk" data-tabs>
+          <h3 class="minor-title">The killed batch, from a terminal</h3>
+          <div class="tabs" role="tablist" aria-label="Terminal walkthrough">
+            <button role="tab" type="button" id="tab-t1" aria-selected="true" aria-controls="panel-t1">1 · Killed</button>
+            <button role="tab" type="button" id="tab-t2" aria-selected="false" aria-controls="panel-t2" tabindex="-1">2 · Report</button>
+            <button role="tab" type="button" id="tab-t3" aria-selected="false" aria-controls="panel-t3" tabindex="-1">3 · Resume</button>
+            <button role="tab" type="button" id="tab-t4" aria-selected="false" aria-controls="panel-t4" tabindex="-1">4 · Rerun</button>
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-t1" aria-labelledby="tab-t1" tabindex="0">
+            <p class="small">The CLI process is killed with SIGKILL mid-batch. The test server has received 5 submissions, 5 unique.</p>
+            <img src="assets/media/term-1-run.png" width="2120" height="338" alt="Terminal: ritoko run customers with customers.csv, process killed with SIGKILL, output so far nothing. curl to the test server returns received 5, unique 5." loading="lazy" decoding="async">
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-t2" aria-labelledby="tab-t2" tabindex="0" hidden>
+            <p class="small">What the journal knows: 4 done, 1 running (row 5, past its commit), 5 pending.</p>
+            <img src="assets/media/term-2-report.png" width="2120" height="2054" alt="Terminal: ritoko report as JSON. Status running, counts done 4, running 1, pending 5. Item 4, margaret.hamilton, is running; item 5 is pending." loading="lazy" decoding="async">
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-t3" aria-labelledby="tab-t3" tabindex="0" hidden>
+            <p class="small">Resume does only what is left: done 9, review 1, exit code 2 because one item needs a human check.</p>
+            <img src="assets/media/term-3-resume.png" width="2120" height="470" alt="Terminal: ritoko resume, run partial, done 9, review 1. Row 5, margaret.hamilton, is review: interrupted after commit, check the result on the site. Exit code 2. The server reports received 10, unique 10." loading="lazy" decoding="async">
+          </div>
+          <div class="tab-panel" role="tabpanel" id="panel-t4" aria-labelledby="tab-t4" tabindex="0" hidden>
+            <p class="small">The same CSV again: 9 skipped, row 5 still blocked, the server still at 10 received, 10 unique.</p>
+            <img src="assets/media/term-4-rerun.png" width="2120" height="904" alt="Terminal: ritoko run customers again, partial, skipped 9, review 1. Each done row says already done in the previous run; row 5 says outcome unknown, resolve the original item first. Server still reports received 10, unique 10." loading="lazy" decoding="async">
+          </div>
+          <p class="small term-all"><a href="assets/media/crash-resume-terminal.png">All four terminals in one image (PNG)</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HOW IT WORKS ============ -->
+    <section class="section how-section" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 03</p>
+          <h2 id="how-title">How it works</h2>
+          <p class="section-lede">A plugin made of three parts: a skill that tells your agent how to record, a local MCP server that drives Chrome, and a CLI that replays without any agent.</p>
+        </header>
+
+        <div class="how-grid">
+          <ol class="steps">
+            <li>
+              <h3>Record</h3>
+              <p>The agent opens the start page in Ritoko's Chrome window and does the task for real, with the first row's values. Ritoko returns a selector for each action and checks it is unique.</p>
+            </li>
+            <li>
+              <h3>Save</h3>
+              <p>The agent writes the workflow: parameters, the batch source (Excel or CSV), a business key per item, one <code>commit</code> step and <code>expect</code> checks that prove each row worked.</p>
+            </li>
+            <li>
+              <h3>Replay</h3>
+              <p>Ritoko executes the workflow with Playwright, without a model, and journals every item in SQLite. Each run freezes its workflow definition and its input rows.</p>
+            </li>
+            <li>
+              <h3>Repair</h3>
+              <p>If the site changed and a selector no longer matches, the run pauses with the page left open. The agent inspects it, repairs that step's target, and resumes. Done items stay done.</p>
+            </li>
+          </ol>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="file">examples/rpa-challenge.json</span>
+              <span class="code-meta">excerpt</span>
+            </div>
+<pre class="code" tabindex="0" role="region" aria-label="Excerpt of the RPA Challenge workflow"><code data-highlight="json">{
+  "name": "rpa-challenge",
+  "version": 4,
+  "items": {
+    "from": "{{files.challenge.xlsx}}",
+    "key": "{{item.Email}}"
+  },
+  "setup": [ … goto, download the workbook, click Start … ],
+  "item": [
+    {
+      "id": "s4",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Address']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Address}}"
+    },
+    … six more fills, one per labelled field …
+    {
+      "id": "s11",
+      "commit": true,
+      "do": "click",
+      "target": {
+        "primary": { "by": "role", "role": "button", "name": "Submit" }
+      }
+    },
+    { "id": "s13", "do": "expect", … }
+  ],
+  "teardown": [
+    {
+      "id": "s12",
+      "do": "expect",
+      "target": {
+        "primary": { "by": "text", "text": "Your success rate is 100%" }
+      }
+    }
+  ]
+}</code></pre>
+            <ul class="code-notes">
+              <li><span class="note-tag">key</span> The business key. A row whose key is already done in this workflow is skipped.</li>
+              <li><span class="note-tag">xpath</span> The challenge shuffles fields and randomizes ids every round, so the target is anchored on the visible label, never on an id or a position.</li>
+              <li><span class="note-tag note-tag--commit">commit</span> The point of no return. An item interrupted after this step becomes review.</li>
+              <li><span class="note-tag">expect</span> Proof on the page. An item is done only when its checks pass.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="ladder">
+          <h3 class="minor-title">Selector order of preference</h3>
+          <ol class="ladder-list">
+            <li><span>Role and accessible name</span></li>
+            <li><span>Label</span></li>
+            <li><span>Anchored visible text</span></li>
+            <li><span>Test id</span></li>
+            <li><span>Relative CSS or XPath</span></li>
+          </ol>
+          <p class="ladder-note">Never a generated id, an absolute XPath or a position. Each element gets a primary selector plus fallbacks, each verified unique when recorded.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SAFETY ============ -->
+    <section class="section safety-section" id="safety" aria-labelledby="safety-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 04</p>
+          <h2 id="safety-title">The safety contract</h2>
+          <p class="section-lede">Every item ends in exactly one state. The state decides what happens on resume and on every later run.</p>
+        </header>
+
+        <div class="table-scroll" role="region" aria-labelledby="safety-caption" tabindex="0">
+          <table class="ledger-table status-table">
+            <caption id="safety-caption">Item states and what Ritoko does with them</caption>
+            <thead>
+              <tr>
+                <th scope="col">State</th>
+                <th scope="col">Meaning</th>
+                <th scope="col">On resume</th>
+                <th scope="col">On a later run</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row"><span class="chip chip--done">done</span></th>
+                <td>Verified by the workflow's <code>expect</code> steps.</td>
+                <td>Kept.</td>
+                <td>Skipped. The same key with different data is blocked, not silently skipped.</td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="chip chip--failed">failed</span></th>
+                <td>Failed before submission. Nothing irreversible happened.</td>
+                <td>Retried from the start of the form.</td>
+                <td>Runs again.</td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="chip chip--review">review</span></th>
+                <td>Submission may have happened, or confirmation failed after it.</td>
+                <td>Never replayed.</td>
+                <td>Blocked, even with <code>repeat</code>, until someone checks the site and resolves it with an evidence note.</td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="chip chip--skipped">skipped</span></th>
+                <td>Already done by a previous run.</td>
+                <td>Kept.</td>
+                <td>Skipped.</td>
+              </tr>
+              <tr>
+                <th scope="row"><span class="chip chip--paused">paused</span></th>
+                <td>A selector stopped matching. The page is left open for repair.</td>
+                <td>Before commit: the form restarts in full. After commit: only verification resumes, on the same live page, or the item becomes review.</td>
+                <td>Held as review in any other run until this one is finished or resolved.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="contract">
+          <div class="contract-col">
+            <h3 class="minor-title">The rules a workflow follows</h3>
+            <ul class="rules">
+              <li>One irreversible <code>commit</code> per write item, followed by an <code>expect</code> that proves that specific item's result.</li>
+              <li>Setup is repeatable and free of irreversible changes: it runs again after a crash.</li>
+              <li>Deduplication uses workflow name, scope and business key. Scope comes from destination or account, never the file name.</li>
+              <li>The whole input is validated before anything runs. Duplicate or empty keys and malformed headers are rejected.</li>
+              <li>Rows are frozen in the journal. Editing the spreadsheet does not change a batch being resumed.</li>
+              <li>Every manual decision needs an evidence note, and is logged.</li>
+            </ul>
+          </div>
+          <div class="contract-col">
+            <h3 class="minor-title">What a run reports</h3>
+            <ul class="rules rules--plain">
+              <li><span class="chip chip--done">done</span> every item confirmed or skipped, and final checks passed.</li>
+              <li><span class="chip chip--review">partial</span> some items failed or need review.</li>
+              <li><span class="chip chip--failed">stopped</span> execution could not continue.</li>
+            </ul>
+            <p class="small">The CLI exits with code 2 for partial, stopped and repair pauses, so scripts never mistake them for success.</p>
+            <p class="small boundary">The journal protects actions executed through this Ritoko installation. It cannot stop a submission made elsewhere, make a website idempotent, or guess success from a generic message: the business checks are yours to write.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPARE ============ -->
+    <section class="section compare-section" id="compare" aria-labelledby="compare-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 05</p>
+          <h2 id="compare-title">Why not just ask Claude for a Playwright script?</h2>
+        </header>
+
+        <div class="prose-cols">
+          <p>You can, and for a one-off task you should. A generated script also replays without a model, and it is yours to read and change.</p>
+          <p>What a script does not come with is the bookkeeping around it: which rows already went through, what happened to the row in flight when the laptop slept, how to rerun Monday's file without resubmitting Friday's rows, and what to do when the site renames a button.</p>
+          <p>Ritoko is that bookkeeping, written once: a per-item journal, a commit boundary, a review state for the uncertain case, selectors chosen while the agent is looking at the real page, and a repair loop that resumes instead of restarting. If you would rather build those yourself, a script is a fine choice.</p>
+        </div>
+
+        <div class="table-scroll matrix-scroll" role="region" aria-labelledby="matrix-caption" tabindex="0">
+          <table class="ledger-table matrix">
+            <caption id="matrix-caption">Feature matrix, as of October&nbsp;2026<a href="#fn-asof" class="fn-ref" aria-describedby="fn-label">*</a></caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="visually-hidden">Capability</span></th>
+                <th scope="col" class="col-ritoko">Ritoko</th>
+                <th scope="col">Generated one-off Playwright script</th>
+                <th scope="col">Claude in Chrome shortcuts<a href="#fn-cic" class="fn-ref">1</a></th>
+                <th scope="col">Codex Record &amp; Replay<a href="#fn-codex" class="fn-ref">2</a></th>
+                <th scope="col">Browser Use Scripts<a href="#fn-bu" class="fn-ref">3</a></th>
+                <th scope="col">Playwright MCP recording<a href="#fn-pw" class="fn-ref">4</a></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Journal per item</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> SQLite, per run</td>
+                <td><span class="m m--diy">You write it</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--diy">You write it</span> around the generated code</td>
+              </tr>
+              <tr>
+                <th scope="row">Resume after a crash</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> frozen rows and definition</td>
+                <td><span class="m m--diy">You write it</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--diy">You write it</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Duplicate guard</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> workflow + scope + key</td>
+                <td><span class="m m--diy">You write it</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--doc">Per docs</span> callers reconcile external actions to avoid duplicate work</td>
+                <td><span class="m m--diy">You write it</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Review state for uncertain submissions</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> blocked across runs</td>
+                <td><span class="m m--diy">You write it</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--diy">You write it</span></td>
+              </tr>
+              <tr>
+                <th scope="row">Replay without a model</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> Playwright</td>
+                <td><span class="m m--yes">Yes</span> it is code</td>
+                <td><span class="m m--doc">Per docs</span> Claude repeats the recorded steps</td>
+                <td><span class="m m--rep">Reported</span> the agent replays the skill, with computer use</td>
+                <td><span class="m m--doc">Per docs</span> every rerun still starts a model</td>
+                <td><span class="m m--yes">Yes</span> output is Playwright code</td>
+              </tr>
+              <tr>
+                <th scope="row">Local signed-in Chrome</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> dedicated profile, logins persist</td>
+                <td><span class="m m--diy">Configurable</span> persistent context</td>
+                <td><span class="m m--doc">Documented</span> runs in your Chrome</td>
+                <td><span class="m m--rep">Reported</span> drives the Mac desktop</td>
+                <td><span class="m m--nd">Not documented</span> for Scripts</td>
+                <td><span class="m m--doc">Documented</span> persistent profile</td>
+              </tr>
+              <tr>
+                <th scope="row">Input from Excel or CSV</th>
+                <td class="col-ritoko"><span class="m m--yes">Built in</span> validated before the run</td>
+                <td><span class="m m--diy">You write it</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--nd">Not documented</span></td>
+                <td><span class="m m--diy">You write it</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="footnotes">
+          <p id="fn-asof"><span id="fn-label">*</span> As of October 2026, from each product's public documentation. “Not documented” means we did not find it in their public docs, not that it is impossible. Products change quickly: verify against their docs.</p>
+          <ol>
+            <li id="fn-cic">Shortcuts are recorded in the Claude in Chrome extension. Recording them from Claude Code is not documented.</li>
+            <li id="fn-codex">Produces a reusable skill that the agent follows on later runs. The macOS app and computer-use replay are reported by secondary sources.</li>
+            <li id="fn-bu">Browser Use docs state that each later run still starts a model and uses tokens, and ask callers to reconcile external actions before starting duplicate work.</li>
+            <li id="fn-pw">Action recording to Playwright code was added in September 2026. The output is a script, so the bookkeeping column is the same as a generated script.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TRADE-OFFS ============ -->
+    <section class="section tradeoffs-section" id="tradeoffs" aria-labelledby="tradeoffs-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 06</p>
+          <h2 id="tradeoffs-title">Advantages and trade-offs</h2>
+        </header>
+        <div class="tradeoffs">
+          <div class="tradeoff tradeoff--yes">
+            <h3>Where it is great</h3>
+            <ul>
+              <li>Recurring forms filled from a spreadsheet, where a double submission costs something.</li>
+              <li>Regular exports and downloads with a variable period.</li>
+              <li>Sites you are signed in to: the dedicated Chrome profile keeps its sessions.</li>
+              <li>Cheap reruns: tokens are spent once at recording, then only for repairs.</li>
+              <li>Batches you need to explain afterwards: every item has a state, a message and evidence.</li>
+              <li>Unattended runs from a terminal, with no agent and an exit code scripts can trust.</li>
+            </ul>
+          </div>
+          <div class="tradeoff tradeoff--no">
+            <h3>Where it is not the right tool</h3>
+            <ul>
+              <li>Sites behind CAPTCHA or anti-bot protection. Ritoko does not bypass them.</li>
+              <li>Sites whose terms forbid automation.</li>
+              <li>A one-off task. Just ask your agent.</li>
+              <li>Tasks that need judgement on every item. Reading varied documents needs the agent each time.</li>
+              <li>Desktop applications. It drives Chrome only.</li>
+              <li>Machines without Google Chrome or Node 24.</li>
+              <li>Actions taken outside Ritoko: the journal cannot see them.</li>
+              <li>Per-site business checks: you, or your agent, write the <code>expect</code> steps.</li>
+              <li>Teams that need a mature tool today. This is v0.1, a new project.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ INSTALL ============ -->
+    <section class="section install-section" id="install" aria-labelledby="install-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 07</p>
+          <h2 id="install-title">Install</h2>
+          <p class="section-lede"><span class="chip chip--review">At public launch</span> The repository is private for now; these commands will work once it opens.</p>
+        </header>
+
+        <div class="install-grid">
+          <div class="install-card">
+            <h3>Claude Code</h3>
+            <div class="cmd">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code>claude plugin marketplace add Swih/ritoko</code>
+              <button class="copy" type="button" data-copy>Copy</button>
+            </div>
+            <div class="cmd">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code>claude plugin install ritoko@ritoko</code>
+              <button class="copy" type="button" data-copy>Copy</button>
+            </div>
+            <p class="small">Restart Claude Code. The skill and the MCP server load with the plugin.</p>
+          </div>
+          <div class="install-card">
+            <h3>Codex CLI</h3>
+            <div class="cmd">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code>codex plugin marketplace add Swih/ritoko</code>
+              <button class="copy" type="button" data-copy>Copy</button>
+            </div>
+            <p class="small">Then select Ritoko in the plugin directory and restart Codex.</p>
+          </div>
+          <div class="install-card install-card--req">
+            <h3>Requirements</h3>
+            <ul class="rules rules--plain">
+              <li><strong>Node.js 24</strong> or newer</li>
+              <li><strong>Google Chrome</strong> (or set <code>RITOKO_CHROME_PATH</code>)</li>
+              <li>Windows, macOS or Linux</li>
+            </ul>
+            <p class="small">On first start the launcher installs its runtime dependencies once, with npm lifecycle scripts disabled.</p>
+          </div>
+        </div>
+
+        <div class="ask">
+          <h3 class="minor-title">Then ask your agent</h3>
+          <ul class="ask-list">
+            <li><q>Record this task with Ritoko: download the September report from …</q></li>
+            <li><q>Rerun the supplier-onboarding workflow with suppliers.csv</q></li>
+            <li><q>Resume my last Ritoko run</q></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FAQ ============ -->
+    <section class="section faq-section" id="faq" aria-labelledby="faq-title">
+      <div class="wrap">
+        <header class="section-head">
+          <p class="folio">§ 08</p>
+          <h2 id="faq-title">Questions</h2>
+        </header>
+        <div class="faq">
+          <details>
+            <summary>Is it safe to point at a real site?</summary>
+            <div class="answer">
+              <p>Safer than a loop of clicks, within limits. Each workflow marks one step as the commit. If anything interrupts an item after that step, the item becomes review and is blocked in every later run until someone checks the site and records what happened. Finished keys are skipped, so rerunning a file does not submit its rows twice.</p>
+              <p>What it cannot do: see submissions made outside Ritoko, make a website idempotent, or know that a generic “Saved” message means success. The <code>expect</code> checks for each site are your job, and your agent's.</p>
+            </div>
+          </details>
+          <details>
+            <summary>What about logins and MFA?</summary>
+            <div class="answer">
+              <p>Ritoko uses its own Chrome window with a dedicated profile, so logins persist between runs. When the agent meets a login, MFA prompt or CAPTCHA while recording, it asks you to complete it yourself in that window. The skill tells it never to type your passwords.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Which sites does it work on?</summary>
+            <div class="answer">
+              <p>Web pages in Google Chrome that you are allowed to automate. Not sites with CAPTCHA or anti-bot protection, and not sites whose terms forbid automation. Desktop applications are out of scope.</p>
+            </div>
+          </details>
+          <details>
+            <summary>How many tokens does it cost?</summary>
+            <div class="answer">
+              <p>Recording costs what your agent spends doing the task once and writing the workflow. Replay costs none: no model is called. A repair costs tokens only when a site changes and a selector stops matching.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Where does my data go?</summary>
+            <div class="answer">
+              <p>Nowhere new. Workflows, the journal, evidence files and the browser profile live on your machine in <code>~/.ritoko</code>. Ritoko has no server and no telemetry. What leaves your machine is what the sites you automate receive, and what your agent sends to its model provider while it records or repairs. The launcher downloads its npm dependencies once, on first start.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Do I need Claude Code or Codex to replay?</summary>
+            <div class="answer">
+              <p>No. The agent is needed to record and to repair. Replays, reports, resumes and review resolutions also work from the <code>ritoko</code> command line.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Can it read invoices or other documents?</summary>
+            <div class="answer">
+              <p>Optionally. A downloaded image can be handed to your agent, which reads it with its own model. Ritoko ships no OCR engine. That step uses a model for every new document, so it is not part of model-free replay.</p>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" role="contentinfo">
+    <div class="wrap footer-grid">
+      <div class="footer-brand">
+        <a class="brand" href="#top" aria-label="Ritoko, back to top">
+          <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><use href="#mark"/></svg>
+          <span class="brand-name">Ritoko</span>
+        </a>
+        <p class="small">Reliable, resumable browser procedures for coding agents.</p>
+      </div>
+      <p class="small scope">Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections, and it stops for logins and MFA so you complete them yourself.</p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/Swih/ritoko" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/Swih/ritoko/blob/main/LICENSE" rel="noopener">MIT License</a></li>
+        <li><span>© 2026 Swih</span></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

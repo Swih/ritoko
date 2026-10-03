@@ -70,7 +70,7 @@ For each executable change, choose a new version, align the package, root lock, 
 | npm | Publish a new immutable version; stable publications use the `latest` tag by default. Git pushes do not publish packages. |
 | Official MCP Registry | Dispatch the existing workflow for each npm release. It validates and publishes the versioned manifest after CI and npm checks. |
 | GitHub | Push source changes; publish release notes and the matching archive for package releases. |
-| Glama | Rebuild from the new source revision, check the detected tools, then publish its corresponding release. |
+| Glama | Auto-Release is enabled for GitHub releases. Verify that the expected version and tools were published; manual repository sync, build and release remain the fallback. |
 | Link-only directories such as the submitted mcpservers.org listing | Keep the GitHub link stable; update submitted metadata when the name, description, installation or supported features change. Their review/indexing is separate. |
 | Smithery | Build and test a new MCPB bundle, then publish its release. The npm tarball does not replace a bundle. |
 
@@ -83,7 +83,7 @@ Consumers choose their update policy:
 
 Use pinned versions for repeatable automation; test an upgrade on a small batch before moving production workflows to it. See [npm execution and cache behavior](https://docs.npmjs.com/cli/v11/commands/npm-exec/) and [npm publishing and dist tags](https://docs.npmjs.com/cli/v11/commands/npm-publish/).
 
-The official MCP step is automated after a manual dispatch. npm publishing can later use trusted publishing, and a single release workflow can coordinate both; Glama/Smithery automation needs their account and release integration. Keep these steps explicit until those integrations have been configured and tested.
+The official MCP step is automated after a manual dispatch. Glama's enabled Auto-Release setting is intended to build and publish on each GitHub release; the initial version was also checked through its manual build/release path. npm publishing can later use trusted publishing, and a single release workflow can coordinate npm and the official registry. Smithery automation still needs bundle generation, validation and its account integration. Verify these integrations before relying on a fully automatic release.
 
 ## Initial distribution record
 

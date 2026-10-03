@@ -22,6 +22,13 @@ afterEach(async () => {
 })
 const label = (text: string) => ({ primary: { by: 'label' as const, text }, fallbacks: [] })
 
+/** Outcome status, with the failing step and the page when a run needs repair: readable CI failures. */
+const outcome = (o: { status: string; error?: string; snapshot?: string }) =>
+  o.status === 'needs_repair'
+    ? `needs_repair: ${o.error}
+${o.snapshot?.slice(0, 800)}`
+    : o.status
+
 async function fixture(count = 3, broken = false) {
   const root = mkdtempSync(join(tmpdir(), 'ritoko-e2e-'))
   const site = await lab()
@@ -122,7 +129,7 @@ describe('Chrome and real server effects', () => {
       ],
     })
     const first = await f.runner.start('auto-upload', { input })
-    expect(first.status).toBe('done')
+    expect(outcome(first)).toBe('done')
     expect(f.site.uploads).toHaveLength(1)
     expect(f.site.uploads[0]).toContain('123,42.00')
     expect((await f.runner.start('auto-upload', { input })).report.counts).toEqual({ skipped: 1 })
@@ -254,7 +261,7 @@ describe('Chrome and real server effects', () => {
       { Email: 'user1@example.test', Name: 'User 1' },
       'Recorded first row and observed matching confirmation',
     )
-    expect(adopted.status).toBe('done')
+    expect(outcome(adopted)).toBe('done')
     expect((await f.runner.start(f.wf.name, { input: f.input })).report.counts).toEqual({
       skipped: 1,
       done: 2,
@@ -266,7 +273,7 @@ describe('Chrome and real server effects', () => {
   it('replays a CSV once and skips its second run', async () => {
     const f = await fixture()
     const first = await f.runner.start(f.wf.name, { input: f.input })
-    expect(first.status).toBe('done')
+    expect(outcome(first)).toBe('done')
     expect(first.report.counts).toEqual({ done: 3 })
     for (const item of first.report.items)
       expect(readFileSync(item.evidence as string).length).toBeGreaterThan(100)
@@ -290,7 +297,7 @@ describe('Chrome and real server effects', () => {
     const f = await fixture(2)
     f.site.failConfirmation()
     const first = await f.runner.start(f.wf.name, { input: f.input })
-    expect(first.status).toBe('partial')
+    expect(outcome(first)).toBe('partial')
     expect(first.report.counts).toEqual({ review: 2 })
     const next = await f.runner.start(f.wf.name, { input: f.input }, { repeat: true })
     expect(next.report.counts).toEqual({ review: 2 })
@@ -306,7 +313,7 @@ describe('Chrome and real server effects', () => {
     })
     f.site.failWithServerError()
     const result = await f.runner.start(f.wf.name, { input: f.input })
-    expect(result.status).toBe('partial')
+    expect(outcome(result)).toBe('partial')
     expect(result.report.items.map((i) => [i.status, i.cause])).toEqual([
       ['review', 'verification'],
       ['review', 'verification'],
@@ -348,7 +355,7 @@ describe('Chrome and real server effects', () => {
       })
     await save()
     const unexpected = await f.runner.start('widgets')
-    expect(unexpected.status).toBe('stopped')
+    expect(outcome(unexpected)).toBe('stopped')
     expect(unexpected.report.message).toMatch(/Unexpected confirm dialog "Delete record\?"/)
     await save('accept')
     expect((await f.runner.start('widgets')).status).toBe('done')
@@ -413,7 +420,7 @@ describe('Chrome and real server effects', () => {
       item: f.wf.item.map((s) => (s.id === 'name' ? { ...s, value: '{{item.Contact Name}}' } : s)),
     })
     const result = await f.runner.start('copy-customers')
-    expect(result.status).toBe('done')
+    expect(outcome(result)).toBe('done')
     expect(readFileSync(result.report.files['customers.csv'] as string, 'utf8')).toBe(
       [
         'Email,Contact Name,Contact Note,Column 4',
@@ -450,7 +457,7 @@ describe('Chrome and real server effects', () => {
       ],
     })
     const result = await f.runner.start(f.wf.name, { input: f.input })
-    expect(result.status).toBe('done')
+    expect(outcome(result)).toBe('done')
     expect(result.report.durationMs).toBeLessThan(10_000)
     expect(result.report.items.every((i) => i.evidence)).toBe(true)
     expect((await f.browser.page()).context().pages()).toHaveLength(1)
@@ -527,7 +534,7 @@ describe('Chrome and real server effects', () => {
       const run = f.ledger.lastRun(f.wf.name)
       expect(run).toBeDefined()
       const resumed = await f.runner.resume(run?.id ?? '')
-      expect(resumed.status).toBe('partial')
+      expect(outcome(resumed)).toBe('partial')
       expect(resumed.report.counts).toEqual({ done: 9, review: 1 })
       expect(f.site.submissions).toHaveLength(10)
       expect(new Set(f.site.submissions.map((s) => s.Email)).size).toBe(10)

@@ -438,7 +438,7 @@ describe('safe batch execution', () => {
     const result = await f.start()
     expect(result.report.items.map((i) => i.status)).toEqual(['done', 'failed'])
     expect(result.report.items[1]?.message).toMatch('must stay inside')
-    expect(f.state.uploads).toEqual([realpathSync(join(f.root, 'inside.csv'))])
+    expect(f.state.uploads).toEqual([realpathSync.native(join(f.root, 'inside.csv'))])
     const local = await fixture({ setup: [{ id: 'setup', do: 'goto', url: 'file:///etc/passwd' }] })
     expect((await local.start()).report.message).toMatch('http(s)')
   })

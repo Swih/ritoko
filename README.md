@@ -1,182 +1,273 @@
-# Ritoko
+<!-- mcp-name: io.github.Swih/ritoko -->
 
-**Turn a browser task your agent solved once into a reusable procedure.** Rerun it with new data, verify each item, and resume after interruption. Uncertain submissions are held for review and never automatically submitted again.
+# Ritoko — reusable automation for AI agents
 
-Works with **Claude Code** and **Codex CLI** (plugin = skill + local MCP server), and with any local MCP client (see [Use with other agents](#use-with-other-agents)).
+**Solve a task once. Save the procedure. Run it again with new data.**
 
-## How it works
+Ritoko is an open-source browser automation and robotic process automation (RPA) tool for AI agents. Turn a solved task into a reusable browser, HTTP API or MCP workflow, run CSV or Excel batches, verify results and resume interrupted work with a local SQLite journal.
 
-1. **Record.** Your agent does the task once. The Chrome recorder computes selectors for each action, each verified to match only that element, best first: role and accessible name, label, placeholder, test id, an XPath anchored on a nearby label, visible text. Only when none of these is unique does it fall back to adjacent text, a `name` or `id` attribute, or the position inside a uniquely identified container; a bare positional CSS path is the last resort and is flagged `fragile` for the agent to replace. Existing API and MCP operations can instead be written directly as steps.
-2. **Save.** The agent turns the recording into a workflow: parameters, a batch source (Excel/CSV), a business key per item, a `commit` step, and `expect` checks.
-3. **Replay.** Ritoko executes without a model and journals every item in SQLite. Each run keeps its workflow definition and input rows.
-4. **Repair.** If a selector changed, the run pauses with the page left open. Before submission, the form restarts in full. After submission, only verification resumes on the same document; otherwise the item is held for review. A missing verification target pauses only the run's first submitted item, once. Any other miss after submission, or expected text absent from the page (such as an error page), holds the item for review and the batch continues.
+Use it as a **Claude Code or Codex plugin**, a **local Model Context Protocol (MCP) server**, or a **standalone CLI**. The direct replay engine runs saved workflows without calling an LLM.
 
-| Status | Meaning |
-|---|---|
-| `done` | Verified by the workflow's `expect` steps |
-| `failed` | Failure before submission, safe to retry with resume; conflicting data is blocked |
-| `review` | Submission may have happened; check on the site — blocked across future runs, including repeat |
-| `skipped` | Already done by a previous run (no double submission) |
+[![CI](https://github.com/Swih/ritoko/actions/workflows/ci.yml/badge.svg)](https://github.com/Swih/ritoko/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/ritoko)](https://www.npmjs.com/package/ritoko)
+[![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-43853d)](https://nodejs.org/)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A run is `done` only when all items are confirmed or skipped and its final checks passed. `partial` means some items failed or need review; `stopped` means execution could not continue. The CLI returns exit code 2 for these outcomes and for repair pauses.
+[Quick start](#quick-start) · [Use cases](#what-can-you-automate) · [How it works](#how-it-works) · [Workflow example](#what-does-a-workflow-look-like) · [FAQ](#faq) · [Advanced guide](docs/usage.md)
 
-## Install
+[![Ritoko crash-and-resume demo: a local customer batch reaches 10 unique submissions, while one uncertain row remains held for review.](site/assets/media/poster.png)](https://github.com/Swih/ritoko/raw/refs/heads/main/site/assets/media/demo.mp4)
 
-Requires Node 24+. Google Chrome is needed for the direct browser runner; HTTP/MCP-only workflows need no browser. Claude Code:
+**[Watch the 34-second demo](https://github.com/Swih/ritoko/raw/refs/heads/main/site/assets/media/demo.mp4)** — real-time execution against a local test application. Kill the process after the fifth submission, resume, then rerun the same CSV: 10 submissions received, 10 unique, one row still awaiting confirmation. [Recorded results and environment](site/assets/media/facts.json).
+
+## Why use Ritoko?
+
+An agent can figure out how to enter a customer, download a report or call a business tool. A recurring batch also needs an input format, a rule for identifying each record, a success check and a way to recover after interruption.
+
+Ritoko keeps those decisions in a reusable procedure:
+
+- **Reuse the work.** Save parameters, selectors, API calls and verification rules in a readable JSON workflow.
+- **Process new data.** Feed the procedure another CSV or Excel file instead of explaining the same steps for every row.
+- **Recover with evidence.** See which items finished, failed or have an uncertain outcome. Confirmed items are skipped on later runs; uncertain writes are held for review.
+
+For example: teach your agent to create one customer, save `customer-import`, then ask it to process next week's spreadsheet and report each result.
+
+## What can you automate?
+
+| Task | Input | What the workflow does |
+| --- | --- | --- |
+| Customer or supplier onboarding | CSV / Excel rows | Fill forms, submit each record and check its identifying details |
+| Recurring report downloads | Account and period parameters | Open the report, wait for it and save the downloaded file |
+| Back-office data exports | An HTML or ARIA table | Extract the rendered table to CSV for a later batch |
+| HTTP API operations | Rows, parameters and environment-backed credentials | Send requests, check status and JSON results, save response files |
+| Existing MCP tools | Rows and tool arguments | Call tools and check their returned data under the same journal rules |
+| Mixed browser and API tasks | A spreadsheet plus workflow parameters | Pass saved values and files between supported browser, HTTP and MCP steps |
+
+Ritoko fits **repeated tasks with explicit rules and verifiable outcomes**. A new task still needs an agent or a workflow author to understand the site and define the procedure.
+
+## Quick start
+
+### 1. Install in your agent
+
+Requires **Node.js 24 or newer**. Browser workflows using the direct runner also need **Google Chrome**. Standalone HTTP/MCP workflows can run without a browser.
+
+**Claude Code**
 
 ```bash
 claude plugin marketplace add Swih/ritoko
 claude plugin install ritoko@ritoko
 ```
 
-Codex CLI:
+**Codex CLI**
 
 ```bash
 codex plugin marketplace add Swih/ritoko
 codex plugin add ritoko@ritoko
 ```
 
-Restart the client after installing or updating. The GitHub plugin uses a Node launcher. On first start it installs its runtime dependencies once (about 6 s and 43 MB), with npm lifecycle scripts disabled and the exact versions pinned in `package-lock.json`. To try a local checkout, use `.` instead of `Swih/ritoko`.
+Restart the client after installation. The Git plugin includes the agent skill and a local MCP server; its launcher installs pinned runtime dependencies on first start, with npm lifecycle scripts disabled.
 
-Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests on Windows, Linux and macOS.
+For long Codex batches, configure the [tool-call timeout](docs/usage.md#long-running-tool-calls) before running.
 
-`run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches or generations lasting minutes, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
+<details>
+<summary><strong>Other local MCP clients</strong></summary>
 
-## Use with other agents
-
-Ritoko is a local stdio MCP server plus an Agent Skills folder. A client needs access to that local process and run files. An isolated cloud client cannot reach them by itself. The direct runner controls local Chrome; host mode lets a compatible local agent execute browser actions or already connected MCP tools. Only Claude Code and Codex CLI are tested as plugin clients; the formats below have not been run. Two ways to point a client at the server:
-
-- Local clone (works today): `git clone https://github.com/Swih/ritoko`, then run `node /absolute/path/to/ritoko/bin/ritoko.mjs mcp`. The first start installs dependencies once.
-- npm installation: `npx -y ritoko@0.1.1 mcp`. The package ships compiled JavaScript and needs no build step.
-
-Generic MCP client (Cursor `~/.cursor/mcp.json`, VS Code `.vscode/mcp.json` with `servers` instead of `mcpServers`, Gemini CLI `~/.gemini/settings.json`, Claude Desktop `claude_desktop_config.json`). Not tested yet:
+Add this stdio server configuration to a client that supports local MCP processes:
 
 ```json
-{ "mcpServers": { "ritoko": { "command": "node", "args": ["/absolute/path/to/ritoko/bin/ritoko.mjs", "mcp"] } } }
-{ "mcpServers": { "ritoko": { "command": "npx", "args": ["-y", "ritoko", "mcp"] } } }
+{
+  "mcpServers": {
+    "ritoko": {
+      "command": "npx",
+      "args": ["--yes", "--prefer-online", "ritoko@latest", "mcp"]
+    }
+  }
+}
 ```
 
-Also give the agent the skill (`skills/ritoko/SKILL.md`) when the client supports skills; without it the tools still work but the agent lacks the recording and safety rules. Clients with a tool-call timeout (Codex stops at 60 s) need it raised for long batches.
+This uses the latest **published npm release**. Git marketplace installs use their Git revision, which may be newer. For repeatable production runs, pin a published version and test upgrades on a small batch.
 
-**Kimi Code CLI** (not tested yet; the repo has a `kimi.plugin.json`). Inside Kimi: `/plugins install https://github.com/Swih/ritoko`, then `/plugins reload`.
+Also load the [Ritoko agent skill](skills/ritoko/SKILL.md) if your client supports skills. Claude Code and Codex CLI are the tested plugin clients; other clients need their own compatibility checks. See [client setup](docs/usage.md#use-with-other-agents).
 
-**OpenClaw** (not tested yet). Register the server and the skill folder:
+</details>
 
-```bash
-openclaw mcp add ritoko --command node --arg /absolute/path/to/ritoko/bin/ritoko.mjs --arg mcp
-openclaw mcp doctor ritoko --probe
-```
+### 2. Choose the browser or integration
 
-then add `/absolute/path/to/ritoko/skills` to `skills.load.extraDirs` in your OpenClaw config, or copy `skills/ritoko` into `<workspace>/skills`. Not published to ClawHub.
+Tell the agent which browser you want it to use. The direct runner connects to personal Chrome after you enable remote debugging at `chrome://inspect/#remote-debugging` and allow the connection. Choose `RITOKO_BROWSER=clean` explicitly for a separate profile.
 
-**Hermes Agent** (not tested yet). In `~/.hermes/config.yaml`:
+A compatible agent browser can execute host workflows when it permits page-script execution. **Codex's current computer-use `evaluate` is read-only, so it cannot execute host browser replay.** Host API-only and connected MCP-tool batches remain available. See [browser selection and trust boundaries](docs/usage.md#cli-and-browser-selection).
 
-```yaml
-mcp_servers:
-  ritoko:
-    command: "node"
-    args: ["/absolute/path/to/ritoko/bin/ritoko.mjs", "mcp"]
-    timeout: 1800
-skills:
-  external_dirs:
-    - /absolute/path/to/ritoko/skills
-```
-
-## Use
+### 3. Teach one task, then reuse it
 
 Ask your agent:
 
-- "Record this task with Ritoko: download the September report from …"
-- "Rerun the `supplier-onboarding` workflow with `suppliers.csv`"
-- "Resume my last Ritoko run"
-- "How did the last run go?"
+> Record a customer import with Ritoko on this back office. Use the browser I selected. Save it as `customer-import` with an `input` spreadsheet parameter. Use Email as the business key and verify the created customer's email.
 
-Or from a terminal, without any agent:
+If the demonstration created a real record, the agent should **adopt that already submitted row** with `run_adopt` and evidence before replaying the batch.
 
-```bash
-node bin/ritoko.mjs import examples/rpa-challenge.json
-node bin/ritoko.mjs run rpa-challenge --repeat
-node bin/ritoko.mjs report
-node bin/ritoko.mjs resume <runId>
-node bin/ritoko.mjs resolve <runId> <key> done --note "Matched the record on the site"
-node bin/ritoko.mjs cancel <runId>
-node bin/ritoko.mjs browser-close
+Then:
+
+> Run `customer-import` on the same back office with `input` set to the absolute path of `customers.csv`. Show me the confirmed, failed and review items, plus any saved files.
+
+Later:
+
+> Resume my last Ritoko run.
+
+> Show the report for my last run and explain which items still need review.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Describe a task"] --> B["Agent records or authors it"]
+    B --> C["Save a JSON workflow"]
+    C --> D["Replay with new data"]
+    D --> E["Journal and verify each item"]
+    E --> F["Report results and review holds"]
 ```
 
-Workflows and runs live in `~/.ritoko` (override with `RITOKO_HOME`). Choose a browser that the user has authorized. Prefer the agent's integrated browser when its tools permit the required operations. Host browser replay requires page-script execution; **the current Codex computer-use `evaluate` is read-only and cannot run these programs**. Check the client's capabilities before choosing host browser mode.
+1. **Define.** The agent records browser actions or writes supported API/MCP steps. The recorder prefers unique labels, roles and other meaningful selectors; fragile positional selectors are flagged.
+2. **Save.** The workflow declares its parameters, input, business key, submission boundary (`commit`) and result checks (`expect`).
+3. **Replay.** The direct engine executes the saved steps. Host mode lets a compatible agent execute supported browser actions or connected tools.
+4. **Journal and recover.** SQLite keeps each run's workflow and input rows. A resumed batch uses that snapshot, even if the original spreadsheet changes. A changed page can pause for repair; an uncertain submission stays held for review.
 
-The direct browser runner connects to the user's Chrome by default, after remote debugging is enabled at `chrome://inspect/#remote-debugging` and the user allows the connection. It uses its own tab and never silently launches another browser when connection fails. Use it when the user chose personal Chrome. `RITOKO_BROWSER=clean` explicitly selects a separate persistent profile without personal logins; headless runs and explicit test profiles also use an isolated profile. Closing the client disconnects without closing Chrome; `browser-close` shuts down a dedicated Chrome and disconnects from personal Chrome, leaving its tabs open. Set `RITOKO_CHROME_PATH` for a nonstandard executable.
+### What happens after a failure?
 
-**Trust boundary.** Local processes with access to an enabled CDP endpoint can control the connected browser. Personal Chrome includes personal sessions; a dedicated profile keeps that boundary separate. Workflows and API/MCP commands are executable configuration and need a trusted author. Private run files and downloaded business data belong in the user's local home, outside the repository.
+| Item status | Meaning | Next action |
+| --- | --- | --- |
+| `done` | The workflow's checks passed | Kept on resume; normally skipped in a later run |
+| `failed` | Failed before submission | Retry safe failures when resuming; conflicting data is blocked |
+| `review` | The write may have happened | Check the actual business result and resolve with evidence |
+| `skipped` | Already confirmed under the same workflow, scope and key | No new submission |
 
-## Host batches and mixed workflows
+A run is complete only when its items are confirmed or skipped and its final checks pass. A partial result or repair pause is visible in the report and returns CLI exit code `2`.
 
-`host_start {workflow, params, parallel: 1}` returns `{runId, batch, actions, note}`. `parallel` accepts 1–4, with one tab per slot. Execute actions once in their order, then call `host_next` with the same batch number:
+**Verification quality matters.** A receipt, record ID or matching customer email can prove the intended result. A generic “Success” banner usually cannot. The journal tracks this Ritoko installation; it cannot prevent independent submissions or guarantee that a remote site is idempotent.
 
-- `navigate`: open the supplied URL in the slot's tab. A short-lived loopback page carries the plan in a URL fragment.
-- `run_js`: execute the supplied program only through a browser tool that permits page-script execution. Preserve its raw JSON result.
-- `click`: make the real click on the page's Ritoko shield to transfer a staged download. Downloads use the clipboard one at a time; Ritoko restores and checks the previous text.
-- `tool`: invoke the already connected MCP server/tool with the exact arguments and return `{actionId, result: <raw MCP result>}`, including `isError`, `content` and `structuredContent`.
+## What does a workflow look like?
 
-`results` has one entry per `run_js` or `tool`, in action order, and none for navigation or clicks. On interruption, include only known results and the number of fully completed actions. Never run an issued batch twice. Missing results after a commit are uncertain and become `review`.
+This illustrative browser workflow creates one customer per spreadsheet row. Adapt the URL, labels and result selector to your application before saving it.
 
-Node executes direct `http` and `mcp` steps between browser segments. `save` feeds `{{vars.name}}` into later steps; files and aliases are kept per row, including parallel downloads. `{ref: "agent"}` reuses an existing tool connection, without starting or stopping that server. Agent tool arguments and browser plans cannot contain runtime credentials. API-only host batches need no browser, even in clients with read-only browser evaluation.
+```json
+{
+  "name": "customer-import",
+  "version": 1,
+  "description": "Create customers and verify their email.",
+  "params": {
+    "base": { "description": "Back-office base URL" },
+    "input": { "description": "Absolute CSV or XLSX path" }
+  },
+  "items": {
+    "from": "{{param.input}}",
+    "key": "{{item.Email}}",
+    "scope": "{{param.base}}"
+  },
+  "item": [
+    {
+      "do": "goto",
+      "url": "{{param.base}}/customers/new"
+    },
+    {
+      "do": "fill",
+      "target": { "primary": { "by": "label", "text": "Email" } },
+      "value": "{{item.Email}}"
+    },
+    {
+      "do": "click",
+      "target": {
+        "primary": { "by": "role", "role": "button", "name": "Create customer" }
+      },
+      "commit": true
+    },
+    {
+      "do": "expect",
+      "target": { "primary": { "by": "testid", "id": "customer-email" } },
+      "text": "{{item.Email}}"
+    }
+  ]
+}
+```
 
-Reports identify `driver: "host" | "direct"`. Resume a host run with `host_next`, and a direct run with `run_resume`. A terminal host run retries safe failures only on an explicit `host_next` without results. Resolve uncertain writes with evidence first. Done rows stay done, including when a different run was previously held by their uncertain outcome.
+`key` identifies the business record; this example's `scope` separates destination URLs. Include the account identifier in the scope if several accounts share a URL. The `commit` marks the irreversible action, and the following `expect` checks that specific row. Read-only batches declare `readOnly: true`.
 
-Prefer the persistent MCP server for mixed workflows: it retains direct MCP connections and runtime credentials between host batches until the run ends or the server disconnects. Each CLI `host next` is a new process; secret values acquired earlier are not persisted and cannot survive that boundary.
+See [complete example workflows](examples), the [workflow schema](src/engine/schema.ts) and the [HTTP/MCP reference](skills/ritoko/reference.md#api-and-mcp-steps).
 
-Host mode currently requires `items` and an item-only workflow. Setup, teardown, iframes, keyboard `press`, table `extract`, hash-route navigation and HTTP `session: "browser"` are unsupported. Browser uploads are limited to 1.35 MB per file and a 1.9 MB encoded plan; downloads are limited to 200 MiB. Native browser download dialogs and sites that remove the plan fragment require another supported driver. Host replay and the Chrome recorder remain separate paths.
+## Use the CLI without an agent
 
-## Proposing an API from a recording
+From a Git checkout, the launcher can import and run an existing workflow without an agent or an LLM API key:
 
-Opt in with `browser_act {captureNetwork: true}` and read `recording {network: true}`. The recorder correlates fetch/XHR metadata with each action: method, origin, route pattern, response status and top-level query/body field names. It omits header values, query values and request/response bodies, and replaces likely dynamic or credential path segments with placeholders. Path redaction is heuristic; treat hints as local site data.
+```bash
+git clone https://github.com/Swih/ritoko.git
+cd ritoko
+node bin/ritoko.mjs import examples/rpa-challenge.json
+node bin/ritoko.mjs run rpa-challenge
+node bin/ritoko.mjs report
+```
 
-Hints do not become executable API steps automatically. Verify the endpoint, authentication, required fields and business result against the site's API contract. Test one authorized row, adopt any already submitted row, then save the replacement explicitly. Keep a browser version where needed; an API write with an uncertain outcome must never automatically fall back to another submission.
+The RPA Challenge example downloads its own Excel input. Choose the direct browser as described above before running it. To intentionally run this same challenge again, add `--repeat`; review holds remain blocked.
 
-## Safe workflow contract
+For an interrupted direct run, use `node bin/ritoko.mjs resume <runId>`. Workflows, journals, evidence and output files live in `~/.ritoko` by default; override with `RITOKO_HOME`.
 
-- Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press, file upload, select or checkbox that auto-submits may be the commit. Only verification, waiting, receipt downloads and extracts may follow it. Declare `readOnly: true` for read-only batches.
-- JS alert/confirm/prompt dialogs are never answered silently. Set `onDialog` (`accept` or `dismiss`, plus `dialogText` for a prompt) on the click or press that opens one; any other dialog is dismissed and fails its step.
-- `extract` (read-only) saves a `<table>` or ARIA table/grid as UTF-8 CSV in the run directory, usable as `{{files.<saveAs>}}` (e.g. as `items.from`) and listed in the report's `files`. Other list layouts are not supported.
-- `download` and `extract` `saveAs` may be a template (`"{{item.Slug}}.mp4"`) so each row gets a clean name in the run directory. The rendered name is sanitized (directories, reserved characters, Windows device names, trailing dots and spaces, length cap 120 characters), a name without extension keeps the real file's extension, and a taken name is never overwritten: it becomes `name (2).ext`. A templated name is keyed in `files` by the saved file's own name (so the report lists every row's file), and `{{files.<step id>}}` is the current row's file in later steps. A literal `saveAs` stays `{{files.<saveAs>}}`, as before.
-- `http` and `mcp` steps call an API or an MCP tool with the same journal, commit and resume rules; a workflow made only of them never opens Chrome. HTTP supports headers, encoded query values, JSON/form/text bodies, status/JSON checks, saved variables, response files, stable idempotency keys and optional Ritoko browser cookies. Only GET/HEAD before the commit retry transient failures, up to three times within one deadline. Writes must be the item's commit; setup and teardown integrations only read. Redirects never carry headers to another origin, and item data or saved variables cannot choose a URL's authority.
-- MCP servers may be a command, a Streamable HTTP URL, `{ref: "claude"}` for Claude Code's local/project/user configuration, or `{ref: "agent"}` for a tool the host agent calls through its existing connection. Agent references require host mode. Direct clients use the v1 SDK and its legacy protocol versions through 2025-11-25; a server requiring only the 2026-07-28 protocol is unsupported. `readOnly: true` is an author assertion; a conflicting server annotation is rejected, and an annotation alone never proves that replay is safe. Calls are never automatically retried; tool errors (`isError`), input requests, protocol errors and timeouts fail the step. A failed commit remains in `review`.
-- `save` feeds later steps as `{{vars.name}}`. Ordinary variables are journaled; credential-like result fields and values matching known secrets stay in memory and must be acquired again after restart. Secret params come from environment variables. Agent-managed arguments cannot reference secrets. HTTP failure messages omit response bodies; journal events contain compact metadata. Saved files contain their original bytes and may contain sensitive business data. See `skills/ritoko/reference.md` for shapes and limits.
-- `wait`, `expect` and `download` accept `timeoutMs` up to 900000 (15 min) for slow generations; other steps stay capped at 120000. Progress notifications are sent at least every 15 s, even inside one long item.
-- Keep setup repeatable and free of irreversible changes. Prefer goto at the beginning of each item so a partly filled form can be rebuilt. Autosave counts as a write; split operations with several irreversible effects into separate workflows.
-- Deduplication uses workflow name + `items.scope` + business key. Set scope from destination/account/operation params, never the CSV filename. Include a period in the key for recurring operations. Different data under a completed key is blocked rather than silently skipped.
-- Input is .xlsx, or .csv in UTF-8 or else Windows-1252 (Excel's classic CSV export), separated by `,` or `;`. Excel number formats are not applied (`07001` reads as `7001`, `15%` as `0.15`): format identifier columns as Text. Hidden and filtered-out rows are read too. Formulas use the result Excel saved; a referenced cell holding a formula error or no saved result is rejected as empty. Never store credentials in a workflow: declare a secret param, read from an environment variable at run time and never stored in the workflow or journal.
-- File paths from item data (`upload` of `{{item.File}}`) must stay inside the input file's folder, or the run folder for a downloaded or extracted input; `goto` opens only http(s) URLs. Agents pass absolute paths; the CLI resolves relative ones against its working directory.
-- The whole input is validated before processing. Duplicate/empty keys, missing referenced values and malformed headers are rejected. Rows are frozen in the journal; changing the source file does not alter a resumed batch.
-- A recorded first submission already changed the site. After saving its workflow, call MCP `run_adopt` with the exact full row and evidence note. This runs only confirmation steps and journals the row so replay skips it. Do not replay it before adopting or resolving it.
-- Resolving done confirms the effect exists. Resolving failed confirms it did not occur and enables retry. Every decision requires an evidence note and is logged. For a duplicate-held item, resolve its original run first.
-- One operation controls the browser at a time. Concurrent CLI/MCP attempts get a busy error naming the active run; a lease left by a process that died or stopped responding is recovered automatically. Read-only reports and page snapshots work during a run.
+## Evidence and current scope
 
-The journal protects actions executed through this Ritoko installation. It cannot prevent independent submissions, guarantee that a website is idempotent, or infer success from a generic message. Workflows need business checks specific to the site. Legacy runs without a frozen definition resume only if their workflow version still matches; otherwise inspect their outcomes first.
+| Validation | Observed result | Evidence |
+| --- | --- | --- |
+| Live RPA Challenge | 10 rows, 70/70 fields, 100% score; site timer 1.735 s | [Screenshot](site/assets/media/rpa-challenge-100.png), [workflow](examples/rpa-challenge.json) |
+| Local crash-and-resume demo | Process killed after submission 5; 10 unique submissions after recovery; 9 confirmed, 1 held for review | [Video](https://github.com/Swih/ritoko/raw/refs/heads/main/site/assets/media/demo.mp4), [recorded facts](site/assets/media/facts.json) |
+| Automated checks | Unit tests and real-Chrome E2E jobs configured for Windows, Linux and macOS | [CI workflow and runs](https://github.com/Swih/ritoko/actions/workflows/ci.yml), [release gates](docs/release.md) |
 
-Document reading is optional. `document_image` sends a downloaded JPEG/PNG to the client agent, which can read it with its current model. Ritoko includes no local OCR engine or invoice parser. For a chosen external OCR service, the agent uses that service with credentials configured by the user. Image extraction requires the agent or that service for each new document; browser-only replay remains deterministic.
+The recorded demos used Ritoko 0.1.0 on Windows with headless Chrome. The RPA site's timer excludes installation and setup; the recorded CLI wall time was 3.559 s. RPA Challenge has no per-row receipt, so its example relies on the final score. These demonstrations and controlled tests do not establish a reliability rate or throughput for every website.
 
-## Scope
+<details>
+<summary>View the live RPA Challenge result</summary>
 
-Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections. It does not detect logins itself: while recording, the agent asks you to complete login or MFA in the selected browser; during direct browser replay, a login page where the form was expected pauses the run as `needs_repair`.
+![RPA Challenge result: 100% success, 70 out of 70 fields entered across 10 changing forms, with a site-reported time of 1735 milliseconds.](site/assets/media/rpa-challenge-100.png)
 
-## Development
+</details>
+
+## FAQ
+
+### Do I need a separate LLM API key?
+
+Ritoko's deterministic runner does not require one. When you use the plugin, your client agent supplies the reasoning through its existing subscription or API configuration. Recording, repairing and host orchestration still use that client. External APIs, OCR providers or paid generation services require their own access and may charge separately.
+
+### Does Ritoko read invoices or perform OCR?
+
+Document reading is optional. `document_image` returns a downloaded JPEG/PNG to the client agent for its model to read. Ritoko includes no local OCR engine or invoice parser. A chosen external OCR service uses user-configured credentials. Each new image still needs the agent or that service; ordinary browser and API replay does not.
+
+### Can Ritoko use my logged-in browser?
+
+The direct runner can connect to personal Chrome with your remote-debugging permission. You can explicitly choose a separate clean profile. Integrated browser support depends on the client's permitted actions; see [driver limits](docs/usage.md#host-batches-and-mixed-workflows). Complete login or MFA in the selected browser when needed.
+
+### Can I use Ritoko with any MCP client?
+
+A local client that can launch a stdio process can connect to the server. Claude Code and Codex CLI are the tested plugin clients. Other clients need configuration and capability checks. An isolated cloud client cannot access your local MCP process or files without a separate connection mechanism.
+
+### Does Ritoko guarantee no duplicate writes?
+
+No. It skips confirmed items and blocks uncertain writes within its journal, including on future runs. The workflow needs the correct business key, destination scope and result checks. Independent submissions and remote system behavior remain outside that journal. Resolving a review item requires evidence about what actually happened.
+
+### Can a browser recording become an API workflow?
+
+Optional network capture provides fetch/XHR metadata to help the agent investigate an API. It does not convert recordings into executable API steps automatically. Verify the API contract and authentication, test an authorized row, then explicitly save the replacement. See [network hints](docs/usage.md#proposing-an-api-from-a-recording).
+
+## Documentation and contributing
+
+- [Advanced usage](docs/usage.md): client configuration, CLI, browser choices, host batches, recovery and workflow rules.
+- [Agent skill](skills/ritoko/SKILL.md): instructions for recording, running, adopting and repairing workflows.
+- [Integration reference](skills/ritoko/reference.md): input formats, HTTP/MCP step shapes and driver limits.
+- [Release gates](docs/release.md): required checks, validation roadmap, publishing and update policies.
+- [Report a bug or request a feature](https://github.com/Swih/ritoko/issues): include the client, Node/browser/OS versions and a redacted reproduction. Keep credentials and business data private.
+
+For development, use Node.js 24+ and pnpm:
 
 ```bash
 pnpm install
-pnpm check   # biome + tsc
+pnpm check
 pnpm test
-pnpm test:e2e # real Chrome, local server, isolated profiles and a killed CLI process
-pnpm build   # package JavaScript
+pnpm build
+pnpm test:e2e
 ```
 
-The local end-to-end suite covers a 20-row, four-tab host batch interrupted after submission, reopening SQLite, resolving the uncertain rows, finishing with 20 unique site submissions, then skipping all 20 on rerun. It also kills the compiled CLI after an HTTP write was accepted and installs the actual npm tarball outside the checkout to exercise its CLI and stdio MCP server without development dependencies or Chrome. These are controlled local-site tests; they do not establish reliability or performance on Gemini, Dreamina or every agent browser. See [release gates and the validation roadmap](https://github.com/Swih/ritoko/blob/main/docs/release.md).
+Ritoko automates services you are authorized to use. It does not bypass CAPTCHAs or anti-bot protections. Workflows and API/MCP commands are executable configuration and require a trusted author.
 
-The retry and cancellation rules follow [HTTP idempotence](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2) and [MCP cancellation](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/cancellation): cancellation may arrive after an action happened. Tool errors use the [MCP result contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), while direct connections retain the [v1 TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x) legacy protocol support. Those limits are reflected in review holds rather than automatic retries of writes.
-
-## Credits
-
-Built by [Swih](https://github.com/Swih) together with Claude (Anthropic) and Codex (OpenAI): both agents wrote, reviewed and audited code in this repository, and are credited as co-authors in its history.
-
-MIT © Swih
+Built by [Swih](https://github.com/Swih) with Claude (Anthropic) and Codex (OpenAI), credited as contributors in the Git history. Released under the [MIT license](LICENSE).

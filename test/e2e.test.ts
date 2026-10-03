@@ -613,14 +613,7 @@ describe('Chrome and real server effects', () => {
     })
     const runner = new Runner(browser, ledger, store, join(root, 'runs'))
     const example = JSON.parse(readFileSync('examples/ritoko-challenge.json', 'utf8'))
-    // Until the engine accepts long timeouts and templated saveAs, replay the equivalent shorter variant.
-    const saved = Workflow.safeParse(example).success
-      ? example
-      : JSON.parse(
-          JSON.stringify(example)
-            .replaceAll('900000', '120000')
-            .replaceAll('{{item.Slug}}.png', 'render.png'),
-        )
+    const saved = Workflow.parse(example)
     await store.save(saved)
 
     const first = await runner.start(saved.name, { base: url })
@@ -628,6 +621,9 @@ describe('Chrome and real server effects', () => {
     expect(first.report.counts).toEqual({ done: 6, review: 1 })
     expect(first.report.items.find((i) => i.status === 'review')?.key).toContain('-at-')
     expect(await stats()).toMatchObject({ submissions: 7, accepted: 6, duplicates: 0, downloads: 7 })
+    // Each row's render is saved under its own slug, not the server's name.
+    expect(Object.keys(first.report.files).filter((f) => f.endsWith('.png'))).toHaveLength(7)
+    expect(Object.keys(first.report.files).some((f) => f.startsWith('gen_'))).toBe(false)
     const again = await runner.start(saved.name, { base: url })
     expect(again.report.counts).toEqual({ skipped: 6, review: 1 })
     expect(await stats()).toMatchObject({ submissions: 7, duplicates: 0 })

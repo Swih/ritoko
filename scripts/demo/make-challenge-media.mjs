@@ -175,14 +175,11 @@ async function terminalPng(file, title, termLines) {
   await page.close()
 }
 
-/** The workflow Ritoko replays today: the example itself when the engine accepts it, else its shorter equivalent. */
+/** The challenge workflow, validated, saved under `name` after `change`. */
 function workflowFile(name = 'ritoko-challenge', change = (text) => text) {
   const example = readFileSync(join(root, 'examples', 'ritoko-challenge.json'), 'utf8')
-  let text = Workflow.safeParse(JSON.parse(example)).success
-    ? example
-    : example.replaceAll('900000', '120000').replaceAll('{{item.Slug}}.png', 'render.png')
-  facts.workflowAsWritten = text === example
-  text = change(text.replace('"name": "ritoko-challenge"', `"name": "${name}"`))
+  Workflow.parse(JSON.parse(example))
+  const text = change(example.replace('"name": "ritoko-challenge"', `"name": "${name}"`))
   const file = join(base, `${name}.json`)
   writeFileSync(file, text)
   return file

@@ -1,0 +1,60 @@
+{
+  "generatedAt": "2026-10-03T02:11:38.055Z",
+  "date": "2026-10-03",
+  "ritokoVersion": "0.1.0",
+  "node": "v24.19.0",
+  "os": "win32 x64",
+  "headless": true,
+  "chrome": "154.0.8037.93",
+  "rpaChallenge": {
+    "workflow": "examples/rpa-challenge.json",
+    "status": "done",
+    "rows": 10,
+    "fields": 70,
+    "scorePercent": 100,
+    "siteReportedMs": 1735,
+    "journalDurationMs": 3190,
+    "cliWallClockMs": 3559,
+    "exitCode": 0
+  },
+  "killAfterServerCount": {
+    "received": 5,
+    "unique": 5
+  },
+  "afterKill": {
+    "status": "running",
+    "counts": {
+      "done": 4,
+      "running": 1,
+      "pending": 5
+    }
+  },
+  "resume": {
+    "exitCode": 2,
+    "wallClockMs": 4737,
+    "line": "<runId>  partial  17.8s  done 9 · review 1"
+  },
+  "rerun": {
+    "exitCode": 2,
+    "wallClockMs": 597,
+    "line": "<runId>  partial  0.1s  skipped 9 · review 1"
+  },
+  "crashDemo": {
+    "rows": 10,
+    "killedAtRow": 5,
+    "killSignal": "SIGKILL",
+    "labLatencyMsPerSubmit": 700,
+    "submissionsReceived": 10,
+    "uniqueSubmissions": 10,
+    "reviewItems": 1,
+    "resumedRunCounts": {
+      "done": 9,
+      "review": 1
+    },
+    "resumedRunStatus": "partial"
+  },
+  "video": {
+    "durationSeconds": 34.2,
+    "speedUp": "none, real time"
+  }
+}

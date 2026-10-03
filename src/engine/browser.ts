@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { type BrowserContext, type Browser as Connection, chromium, type Page } from 'playwright-core'
-import { Ledger } from './ledger.ts'
+import { Ledger, processAlive } from './ledger.ts'
 import { paths } from './paths.ts'
 
 /**
@@ -135,12 +135,19 @@ export class Browser {
     await this.#connection?.close()
   }
 
-  /** Explicit shutdown, used by isolated tests and the browser-close command. */
+  /**
+   * Explicit shutdown, used by isolated tests and the browser-close command. Returns once Chrome has exited:
+   * a Chrome still closing (slower on macOS) would be reattached by the next client, or absorb a relaunch.
+   */
   async shutdown(): Promise<void> {
     if (!this.#connection) await this.page()
     const session = await this.#connection?.newBrowserCDPSession()
+    const info = await session?.send('SystemInfo.getProcessInfo').catch(() => undefined)
+    const pid = info?.processInfo.find((p) => p.type === 'browser')?.id
     await session?.send('Browser.close').catch(() => {})
     await this.close().catch(() => {})
+    const deadline = Date.now() + 15_000
+    while (pid && processAlive(pid) && Date.now() < deadline) await delay(100)
   }
 }
 

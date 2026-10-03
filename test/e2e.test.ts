@@ -69,7 +69,7 @@ async function fixture(count = 3, broken = false) {
         do: 'fill',
         target: label(broken ? 'Old email' : 'Email'),
         value: '{{item.Email}}',
-        timeoutMs: 100,
+        timeoutMs: 1_000,
       },
       { id: 'name', do: 'fill', target: label('Name'), value: '{{item.Name}}' },
       {
@@ -78,7 +78,7 @@ async function fixture(count = 3, broken = false) {
         commit: true,
         target: { primary: { by: 'role', role: 'button', name: 'Create customer' }, fallbacks: [] },
       },
-      { id: 'verify', do: 'expect', text: 'Created {{item.Email}}', timeoutMs: 200 },
+      { id: 'verify', do: 'expect', text: 'Created {{item.Email}}', timeoutMs: 2_000 },
     ],
   })
   const runner = new Runner(browser, ledger, store, join(root, 'runs'))
@@ -217,7 +217,7 @@ describe('Chrome and real server effects', () => {
     await f.store.save({
       ...f.wf,
       item: f.wf.item.map((s) =>
-        s.id === 'submit' ? { ...s, target: button('Old create'), timeoutMs: 100 } : s,
+        s.id === 'submit' ? { ...s, target: button('Old create'), timeoutMs: 1_000 } : s,
       ),
     })
     const { client, call } = await mcp(f.root)
@@ -379,7 +379,7 @@ describe('Chrome and real server effects', () => {
     const f = await fixture(1)
     await f.store.save({
       ...f.wf,
-      teardown: [{ id: 'final', do: 'expect', target: label('Old result'), timeoutMs: 100 }],
+      teardown: [{ id: 'final', do: 'expect', target: label('Old result'), timeoutMs: 1_000 }],
     })
     const paused = await f.runner.start(f.wf.name, { input: f.input })
     expect(paused.status).toBe('needs_repair')

@@ -145,6 +145,7 @@ const cards = [
   ['Fond crème · alternative', palette.paper, palette.red, '#b3301a'],
 ]
 const preview = `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800" viewBox="0 0 1600 800">
+<title>Ritoko brand palette and icon previews</title>
 <rect width="1600" height="800" fill="${palette.dark}"/>
 <text x="64" y="65" font-family="Georgia,serif" font-size="38" fill="${palette.text}">Ritoko · étape par étape</text>
 ${cards.map(([title, bg, fg, hex], index) => `<g transform="translate(${64 + index * 748} 108)"><rect width="724" height="440" rx="14" fill="${bg}" stroke="#dcd4c2"/><g transform="translate(170 14) scale(.375)">${shape(fg)}</g><text x="24" y="378" font-family="Segoe UI,sans-serif" font-size="23" fill="${fg}">${title}</text><text x="24" y="414" font-family="Consolas,monospace" font-size="19" fill="${fg}">${hex}</text></g>`).join('')}
@@ -156,6 +157,7 @@ await sharp(Buffer.from(preview)).png().toFile(join(kit, 'palette-preview.png'))
 
 const rows = ['done', 'done', 'done', 'done', 'review']
 const social = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<title>Ritoko workflow automation overview</title>
 <rect width="1200" height="630" fill="${palette.dark}"/>
 <path d="M64 0V630" stroke="${palette.coral}" stroke-opacity=".3"/>
 ${Array.from({ length: 12 }, (_, index) => `<path d="M0 ${42 + index * 48}H1200" stroke="${palette.text}" stroke-opacity=".035"/>`).join('')}

@@ -72,7 +72,7 @@ For each executable change, choose a new version, align the package, root lock, 
 | GitHub | Push source changes; publish release notes and the matching archive for package releases. |
 | Glama | Rebuild from the new source revision, check the detected tools, then publish its corresponding release. |
 | Link-only directories such as the submitted mcpservers.org listing | Keep the GitHub link stable; update submitted metadata when the name, description, installation or supported features change. Their review/indexing is separate. |
-| Smithery, once distributed there | Build and test a new MCPB bundle, then publish its release. The npm tarball does not replace a bundle. |
+| Smithery | Build and test a new MCPB bundle, then publish its release. The npm tarball does not replace a bundle. |
 
 Consumers choose their update policy:
 
@@ -84,3 +84,21 @@ Consumers choose their update policy:
 Use pinned versions for repeatable automation; test an upgrade on a small batch before moving production workflows to it. See [npm execution and cache behavior](https://docs.npmjs.com/cli/v11/commands/npm-exec/) and [npm publishing and dist tags](https://docs.npmjs.com/cli/v11/commands/npm-publish/).
 
 The official MCP step is automated after a manual dispatch. npm publishing can later use trusted publishing, and a single release workflow can coordinate both; Glama/Smithery automation needs their account and release integration. Keep these steps explicit until those integrations have been configured and tested.
+
+## Initial distribution record
+
+Version 0.1.1 was published on 2026-10-04 from commit `d6c3a67135fe478b248ae1b43600a49d32ff6f72`, with [successful CI on all three operating systems](https://github.com/Swih/ritoko/actions/runs/37156295697).
+
+| Channel | Verified result |
+|---|---|
+| [npm](https://www.npmjs.com/package/ritoko/v/0.1.1) | Public 0.1.1, matching namespace and tarball integrity; isolated registry installation exposes 18 tools and skips already verified rows. |
+| [Official MCP Registry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Swih%2Fritoko/versions/0.1.1) | Active 0.1.1, npm package `ritoko`, local stdio transport. |
+| [GitHub release](https://github.com/Swih/ritoko/releases/tag/v0.1.1) | npm archive and validated MCPB bundle attached to the tagged source revision. |
+| [Glama](https://glama.ai/mcp/servers/Swih/ritoko) | Successful build of the tagged source, version 0.1.1 published, 18 detected tools. |
+| [Smithery](https://smithery.ai/servers/akaswitsh/ritoko) | Successful local stdio bundle release, 18 public tools and accurate metadata. |
+
+The free mcpservers.org form was submitted; submission is not approval. OpenAI directory submission still needs the applicable developer verification, metadata and review requirements.
+
+The MCPB archive contains only the npm package and its locked production dependencies. Its extracted-bundle test verifies the 0.1.1 handshake, 18 tools and API replay without Chrome or development dependencies on Windows with Node 24.19.0. Clients must supply Node 24 or newer; bundle availability does not prove every client provides that runtime.
+
+Smithery CLI 1.2.0 created the server but failed to publish this bundle with `No values to set`. The documented [multipart release API](https://smithery.ai/docs/api-reference/servers/publish-a-server) succeeded with the same archive, an explicit empty object configuration schema, and a server card containing the actual `tools/list` definitions collected from the extracted bundle. Its [metadata API](https://smithery.ai/docs/api-reference/servers/update-a-server) set the name, description, public repository, homepage and license. Reuse this supported API path if that CLI failure recurs; verify the release result and public tool listing before declaring completion.

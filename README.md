@@ -36,7 +36,7 @@ codex plugin marketplace add Swih/ritoko
 codex plugin add ritoko@ritoko
 ```
 
-Restart the client after installing or updating. The plugin uses a Node launcher, with no npx process or published npm release. On first start it installs its runtime dependencies once (about 6 s and 43 MB), with npm lifecycle scripts disabled and the exact versions pinned in `package-lock.json`. To try a local checkout, use `.` instead of `Swih/ritoko`.
+Restart the client after installing or updating. The GitHub plugin uses a Node launcher. On first start it installs its runtime dependencies once (about 6 s and 43 MB), with npm lifecycle scripts disabled and the exact versions pinned in `package-lock.json`. To try a local checkout, use `.` instead of `Swih/ritoko`.
 
 Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests on Windows, Linux and macOS.
 
@@ -47,7 +47,7 @@ Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests 
 Ritoko is a local stdio MCP server plus an Agent Skills folder. A client needs access to that local process and run files. An isolated cloud client cannot reach them by itself. The direct runner controls local Chrome; host mode lets a compatible local agent execute browser actions or already connected MCP tools. Only Claude Code and Codex CLI are tested as plugin clients; the formats below have not been run. Two ways to point a client at the server:
 
 - Local clone (works today): `git clone https://github.com/Swih/ritoko`, then run `node /absolute/path/to/ritoko/bin/ritoko.mjs mcp`. The first start installs dependencies once.
-- npm (works once a release is published): `npx -y ritoko mcp`. The package ships compiled JavaScript and needs no install step.
+- npm installation: `npx -y ritoko@0.1.0 mcp`. The package ships compiled JavaScript and needs no build step.
 
 Generic MCP client (Cursor `~/.cursor/mcp.json`, VS Code `.vscode/mcp.json` with `servers` instead of `mcpServers`, Gemini CLI `~/.gemini/settings.json`, Claude Desktop `claude_desktop_config.json`). Not tested yet:
 
@@ -171,7 +171,7 @@ pnpm test:e2e # real Chrome, local server, isolated profiles and a killed CLI pr
 pnpm build   # package JavaScript
 ```
 
-The local end-to-end suite covers a 20-row, four-tab host batch interrupted after submission, reopening SQLite, resolving the uncertain rows, finishing with 20 unique site submissions, then skipping all 20 on rerun. It also kills the compiled CLI after an HTTP write was accepted and installs the actual npm tarball outside the checkout to exercise its CLI and stdio MCP server without development dependencies or Chrome. These are controlled local-site tests; they do not establish reliability or performance on Gemini, Dreamina or every agent browser. See [release gates and the validation roadmap](docs/release.md).
+The local end-to-end suite covers a 20-row, four-tab host batch interrupted after submission, reopening SQLite, resolving the uncertain rows, finishing with 20 unique site submissions, then skipping all 20 on rerun. It also kills the compiled CLI after an HTTP write was accepted and installs the actual npm tarball outside the checkout to exercise its CLI and stdio MCP server without development dependencies or Chrome. These are controlled local-site tests; they do not establish reliability or performance on Gemini, Dreamina or every agent browser. See [release gates and the validation roadmap](https://github.com/Swih/ritoko/blob/main/docs/release.md).
 
 The retry and cancellation rules follow [HTTP idempotence](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2) and [MCP cancellation](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/cancellation): cancellation may arrive after an action happened. Tool errors use the [MCP result contract](https://modelcontextprotocol.io/specification/2025-11-25/server/tools), while direct connections retain the [v1 TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x) legacy protocol support. Those limits are reflected in review holds rather than automatic retries of writes.
 

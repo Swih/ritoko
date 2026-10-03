@@ -2,7 +2,7 @@
 
 **Turn a browser task your agent solved once into a reusable procedure.** Rerun it with new data, verify each item, and resume after interruption. Uncertain submissions are held for review and never automatically submitted again.
 
-Works with **Claude Code** and **Codex CLI** (plugin = skill + local MCP server).
+Works with **Claude Code** and **Codex CLI** (plugin = skill + local MCP server), and with any local MCP client (see [Use with other agents](#use-with-other-agents)).
 
 ## How it works
 
@@ -41,6 +41,46 @@ Restart the client after installing or updating. The plugin uses a Node launcher
 Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests on Windows, Linux and macOS.
 
 `run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
+
+## Use with other agents
+
+Ritoko is a stdio MCP server plus an Agent Skills folder, so any agent that runs on your machine can use it. Cloud agents (ChatGPT, Meta Muse) are out of scope: Ritoko drives your local Chrome. Only Claude Code and Codex CLI are tested; the rest below follow each vendor's documented format but have not been run. Two ways to point a client at the server:
+
+- Local clone (works today): `git clone https://github.com/Swih/ritoko`, then run `node /absolute/path/to/ritoko/bin/ritoko.mjs mcp`. The first start installs dependencies once.
+- npm (works once a release is published): `npx -y ritoko mcp`. The package ships compiled JavaScript and needs no install step.
+
+Generic MCP client (Cursor `~/.cursor/mcp.json`, VS Code `.vscode/mcp.json` with `servers` instead of `mcpServers`, Gemini CLI `~/.gemini/settings.json`, Claude Desktop `claude_desktop_config.json`). Not tested yet:
+
+```json
+{ "mcpServers": { "ritoko": { "command": "node", "args": ["/absolute/path/to/ritoko/bin/ritoko.mjs", "mcp"] } } }
+{ "mcpServers": { "ritoko": { "command": "npx", "args": ["-y", "ritoko", "mcp"] } } }
+```
+
+Also give the agent the skill (`skills/ritoko/SKILL.md`) when the client supports skills; without it the tools still work but the agent lacks the recording and safety rules. Clients with a tool-call timeout (Codex stops at 60 s) need it raised for long batches.
+
+**Kimi Code CLI** (not tested yet; the repo has a `kimi.plugin.json`). Inside Kimi: `/plugins install https://github.com/Swih/ritoko`, then `/plugins reload`.
+
+**OpenClaw** (not tested yet). Register the server and the skill folder:
+
+```bash
+openclaw mcp add ritoko --command node --arg /absolute/path/to/ritoko/bin/ritoko.mjs --arg mcp
+openclaw mcp doctor ritoko --probe
+```
+
+then add `/absolute/path/to/ritoko/skills` to `skills.load.extraDirs` in your OpenClaw config, or copy `skills/ritoko` into `<workspace>/skills`. Not published to ClawHub.
+
+**Hermes Agent** (not tested yet). In `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  ritoko:
+    command: "node"
+    args: ["/absolute/path/to/ritoko/bin/ritoko.mjs", "mcp"]
+    timeout: 1800
+skills:
+  external_dirs:
+    - /absolute/path/to/ritoko/skills
+```
 
 ## Use
 

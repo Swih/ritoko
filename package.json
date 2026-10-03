@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Turn a browser task your agent solved once into a reliable, resumable procedure.",
   "license": "MIT",
+  "mcpName": "io.github.swih/ritoko",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -10,8 +11,18 @@
   "bin": {
     "ritoko": "bin/ritoko.mjs"
   },
+  "files": [
+    "bin",
+    "dist",
+    "skills",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "check": "biome check . && tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "check":"biome check . && tsc --noEmit",
     "fix": "biome check --write .",
     "test": "vitest run --configLoader native",
     "test:e2e": "vitest run --config vitest.e2e.config.ts --configLoader native",

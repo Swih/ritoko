@@ -55,6 +55,9 @@ if (!ready) {
   if (result.error || result.status !== 0)
     throw new Error(`Dependency installation failed: ${result.error?.message ?? result.stderr.toString()}`)
 }
-const entry = join(root, 'src', 'cli.ts')
+// An npm install ships compiled JS in dist/ (Node cannot strip types under node_modules);
+// a plugin clone runs the TypeScript sources directly.
+const built = join(root, 'dist', 'cli.js')
+const entry = existsSync(built) ? built : join(root, 'src', 'cli.ts')
 if (!existsSync(entry)) throw new Error('Ritoko entry point is missing. Reinstall the plugin.')
 await import(pathToFileURL(entry).href)

@@ -1,0 +1,17 @@
+{
+  "name": "ritoko",
+  "version": "0.1.0",
+  "description": "Record a browser task once, rerun it with new data, verified and resumable.",
+  "skills": "./skills/",
+  "mcpServers": {
+    "ritoko": {
+      "command": "node",
+      "args": ["./bin/ritoko.mjs", "mcp"],
+      "cwd": "./"
+    }
+  },
+  "interface": {
+    "displayName": "Ritoko",
+    "shortDescription": "Record a browser task once, rerun it with new data."
+  }
+}

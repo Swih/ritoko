@@ -25,13 +25,17 @@ Items already confirmed in the same workflow/scope are skipped. Unknown outcomes
 5. Call `recording`, then write the workflow:
    - `setup`: repeatable preparation, free of irreversible business changes. It runs again after a crash.
    - `items`: `{ "from": "{{param.input}}" or "{{files.<saveAs>}}", "key": "{{item.<unique column>}}", "scope": "{{param.account}}" }`. Scope identifies the destination/account/operation, never the input filename. Include a period in the key for recurring operations. Columns are header names, trimmed.
-   - `item`: begin with a goto for independent forms. Replace literal values with `{{item.Column}}`. Mark exactly one submission step `"commit": true`, followed by `expect` proving that specific row's success. The commit may be click, press or upload when file selection auto-submits. Only expect, wait or receipt downloads may follow it. Declare `readOnly: true` for read-only batches. Autosave counts as a write; split workflows with multiple irreversible effects.
+   - `item`: begin with a goto for independent forms. Replace literal values with `{{item.Column}}`. Mark exactly one submission step `"commit": true`, followed by `expect` proving that specific row's success. The commit may be click, press or upload when file selection auto-submits. Only expect, wait, receipt downloads or extracts may follow it. Declare `readOnly: true` for read-only batches. Autosave counts as a write; split workflows with multiple irreversible effects.
    - `teardown`: final checks.
    - `params` for anything that changes between runs (period, file path).
    - A kebab-case `name` and a clear `description`: it is how the workflow is found later.
 6. `workflow_save`, and fix the warnings it returns.
 7. If the recorded task submitted a real row, call `run_adopt` with the workflow, params, exact full row and evidence note. It verifies without submitting and journals that row. Do this before replaying its CSV. A failed adoption check holds it for review.
 8. Prove it: `run_start` and show the report and duration.
+
+## Extract a table to CSV
+
+To pull data from a back-office, write by hand `{ "id": "export", "do": "extract", "target": <the table>, "saveAs": "customers.csv" }`, with the table's role/name from the snapshot. It reads an HTML `<table>` or a `role=table/grid/treegrid` element (not other list layouts) and writes UTF-8 CSV: header from `<thead>`/header cells or the first row (stacked headers joined, blank ones named `Column N`), hidden rows and `<tfoot>` skipped, cell text trimmed. Only rendered rows of the current page are read: wait or expect for the data first; pagination is not followed. The file appears in the report's `files` and as `{{files.customers.csv}}`, e.g. in `items.from` when extracting in setup and processing each row. It is read-only, so it may follow a commit.
 
 ## Repair
 

@@ -60,7 +60,8 @@ Workflows, runs and the browser profile live in `~/.ritoko` (override with `RITO
 
 ## Safe workflow contract
 
-- Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press or file upload that auto-submits may be the commit. Only verification, waiting and receipt downloads may follow it. Declare `readOnly: true` for read-only batches.
+- Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press or file upload that auto-submits may be the commit. Only verification, waiting, receipt downloads and extracts may follow it. Declare `readOnly: true` for read-only batches.
+- `extract` (read-only) saves a `<table>` or ARIA table/grid as UTF-8 CSV in the run directory, usable as `{{files.<saveAs>}}` (e.g. as `items.from`) and listed in the report's `files`. Other list layouts are not supported.
 - Keep setup repeatable and free of irreversible changes. Prefer goto at the beginning of each item so a partly filled form can be rebuilt. Autosave counts as a write; split operations with several irreversible effects into separate workflows.
 - Deduplication uses workflow name + `items.scope` + business key. Set scope from destination/account/operation params, never the CSV filename. Include a period in the key for recurring operations. Different data under a completed key is blocked rather than silently skipped.
 - The whole input is validated before processing. Duplicate/empty keys, missing referenced values and malformed headers are rejected. Rows are frozen in the journal; changing the source file does not alter a resumed batch.

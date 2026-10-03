@@ -48,6 +48,7 @@ function print(outcome: Outcome): void {
       `\nStep "${outcome.stepId}" needs repair: ${outcome.error}\nAsk your agent to repair it, then: ritoko resume ${report.runId}`,
     )
   if (report.message && outcome.status !== 'needs_repair') console.log(report.message)
+  for (const [name, file] of Object.entries(report.files)) console.log(`${name}: ${file}`)
   console.log(`Evidence: ${report.dir}`)
   if (outcome.status !== 'done') process.exitCode = 2
 }

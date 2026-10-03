@@ -292,7 +292,7 @@ server.registerTool(
   'run_report',
   {
     description:
-      'Per-item report of a run (latest run if no id): done, failed, review, skipped, with evidence.',
+      'Per-item report of a run (latest run if no id): done, failed, review, skipped, with evidence and the files it downloaded or extracted.',
     inputSchema: { runId: z.string().optional() },
     annotations: { readOnlyHint: true },
   },

@@ -41,6 +41,13 @@ export const Step = z.discriminatedUnion('do', [
   z.object({ ...base, do: z.literal('upload'), target: Target, file: z.string() }),
   /** Clicks the target and saves the resulting download as `files.<saveAs>`. */
   z.object({ ...base, do: z.literal('download'), target: Target, saveAs: z.string() }),
+  /** Read-only: saves the target table (HTML, or ARIA table/grid) as CSV, also usable as `files.<saveAs>`. */
+  z.object({
+    ...base,
+    do: z.literal('extract'),
+    target: Target,
+    saveAs: z.string().regex(/\.csv$/i, 'extract saves a .csv file'),
+  }),
   /** Verification. Fails the item when the page does not match. */
   z.object({
     ...base,

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Browser } from './browser.ts'
 import { download } from './download.ts'
+import { extract } from './extract.ts'
 import { readItems } from './items.ts'
 import type { Cause, ItemRow, Ledger, Run } from './ledger.ts'
 import { resolve, SelectorError } from './locate.ts'
@@ -25,6 +26,8 @@ export type Report = {
   durationMs: number
   counts: Partial<Record<ItemRow['status'], number>>
   items: Pick<ItemRow, 'idx' | 'key' | 'status' | 'cause' | 'message' | 'evidence'>[]
+  /** Downloaded and extracted files by saveAs name. */
+  files: Record<string, string>
   dir: string
 }
 
@@ -215,6 +218,7 @@ export class Runner {
         message,
         evidence,
       })),
+      files: run.files,
       dir: this.#dir(runId),
     }
   }
@@ -488,6 +492,11 @@ export class Runner {
       }
       case 'download': {
         scope.files[step.saveAs] = await download(page, await locate(), this.#dir(runId), step.saveAs)
+        this.ledger.updateRun(runId, { files: scope.files })
+        return
+      }
+      case 'extract': {
+        scope.files[step.saveAs] = await extract(await locate(), this.#dir(runId), step.saveAs)
         this.ledger.updateRun(runId, { files: scope.files })
         return
       }

@@ -90,16 +90,16 @@ export function check(wf: Workflow): string[] {
   if (wf.item.length && !checks.length) throw new Error('An item needs an expect after its commit')
   if (
     commitIndex >= 0 &&
-    wf.item.slice(commitIndex + 1).some((s) => !['expect', 'wait', 'download'].includes(s.do))
+    wf.item.slice(commitIndex + 1).some((s) => !['expect', 'wait', 'download', 'extract'].includes(s.do))
   )
-    throw new Error('Only verification, waiting or downloading is allowed after commit')
+    throw new Error('Only verification, waiting, downloading or extracting is allowed after commit')
 
   const files = new Set<string>()
   const verify = (template: string, where: string, itemAllowed: boolean) => {
     for (const { ns, key } of references(template)) {
       if (ns === 'param' && !(key in wf.params)) throw new Error(`${where}: unknown param "${key}"`)
       if (ns === 'files' && !files.has(key))
-        throw new Error(`${where}: "files.${key}" is not downloaded before`)
+        throw new Error(`${where}: "files.${key}" is not downloaded or extracted before`)
       if (ns === 'item' && !itemAllowed) throw new Error(`${where}: {{item.*}} is only allowed in item steps`)
     }
   }
@@ -109,7 +109,7 @@ export function check(wf: Workflow): string[] {
         if (field in s && typeof s[field as keyof Step] === 'string')
           verify(s[field as keyof Step] as string, s.id, itemAllowed)
       if ('target' in s && s.target) verify(JSON.stringify(s.target), s.id, itemAllowed)
-      if (s.do === 'download') files.add(s.saveAs)
+      if (s.do === 'download' || s.do === 'extract') files.add(s.saveAs)
     }
   }
   walk(wf.setup, false)

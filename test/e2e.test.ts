@@ -278,6 +278,38 @@ describe('Chrome and real server effects', () => {
     }
   })
 
+  it('extracts a table in setup and processes its rows as the batch', async () => {
+    const f = await fixture(0)
+    await f.store.save({
+      ...f.wf,
+      name: 'copy-customers',
+      items: { from: '{{files.customers.csv}}', key: '{{item.Email}}', scope: '{{param.base}}' },
+      params: { base: { description: 'site', default: f.site.url } },
+      setup: [
+        { id: 'list', do: 'goto', url: '{{param.base}}/customers' },
+        {
+          id: 'export',
+          do: 'extract',
+          target: { primary: { by: 'role', role: 'table', name: 'Customers' }, fallbacks: [] },
+          saveAs: 'customers.csv',
+        },
+      ],
+      item: f.wf.item.map((s) => (s.id === 'name' ? { ...s, value: '{{item.Contact Name}}' } : s)),
+    })
+    const result = await f.runner.start('copy-customers')
+    expect(result.status).toBe('done')
+    expect(readFileSync(result.report.files['customers.csv'] as string, 'utf8')).toBe(
+      [
+        'Email,Contact Name,Contact Note,Column 4',
+        'user1@example.test,User 1,"says ""hi"", ok",Edit',
+        'user2@example.test,User 2,a b,',
+        'user3@example.test,User 3,,',
+        '',
+      ].join('\r\n'),
+    )
+    expect(f.site.submissions.map((s) => s.Name)).toEqual(['User 1', 'User 2', 'User 3'])
+  })
+
   it('confines malicious download filenames and preserves their actual contents', async () => {
     const f = await fixture(1)
     const page = await f.browser.page()

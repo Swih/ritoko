@@ -66,6 +66,20 @@ export async function lab() {
       res.end('Email,Name\na@example.test,Ada\n')
       return
     }
+    if (req.url === '/customers') {
+      res.end(
+        html(`<table aria-label="Customers">
+        <thead><tr><th rowspan="2">Email</th><th colspan="2">Contact</th><th rowspan="2"></th></tr>
+        <tr><th>Name</th><th>Note</th></tr></thead>
+        <tbody><tr><td>user1@example.test</td><td> User
+          1 </td><td>says "hi", ok</td><td><button>Edit</button></td></tr>
+        <tr><td>user2@example.test</td><td>User 2</td><td><table><tr><td>a</td><td>b</td></tr></table></td><td></td></tr>
+        <tr hidden><td>hidden@example.test</td><td>Hidden</td></tr>
+        <tr><td>user3@example.test</td><td colspan="2">User 3</td><td></td></tr></tbody>
+        <tfoot><tr><td colspan="4">3 customers</td></tr></tfoot></table>`),
+      )
+      return
+    }
     if (req.url === '/export') {
       res.end(html('<a href="/download">Export</a>'))
       return

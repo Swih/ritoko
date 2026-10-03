@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     pool: 'threads',
     include: ['test/**/*.test.ts'],
-    exclude: ['test/e2e.test.ts'],
+    exclude: ['test/e2e.test.ts', 'test/**/*.e2e.test.ts'],
     testTimeout: 10_000,
   },
 })

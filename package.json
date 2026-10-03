@@ -20,7 +20,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node scripts/build.mjs",
     "prepack": "npm run build",
     "check": "biome check . && tsc --noEmit",
     "fix": "biome check --write .",
@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@types/chai": "5.2.3",
     "@types/node": "^26.6.4",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"

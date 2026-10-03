@@ -22,6 +22,8 @@ export type Run = {
   itemsLoaded: boolean
   params: Record<string, string>
   files: Record<string, string>
+  /** Values saved by the setup's http and mcp steps, visible to every item. */
+  vars: Record<string, string>
   status: RunStatus
   phase: 'setup' | 'items' | 'teardown'
   step: number
@@ -47,6 +49,8 @@ export type ItemRow = {
   message: string | null
   evidence: string | null
   attempts: number
+  /** Values saved by this item's http and mcp steps. */
+  vars: Record<string, string>
 }
 
 type RunRecord = {
@@ -59,6 +63,7 @@ type RunRecord = {
   items_loaded: number
   params: string
   files: string
+  vars: string
   status: RunStatus
   phase: Run['phase']
   step: number
@@ -83,6 +88,7 @@ type ItemRecord = {
   message: string | null
   evidence: string | null
   attempts: number
+  vars: string
 }
 
 const now = () => new Date().toISOString()
@@ -140,8 +146,9 @@ export class Ledger {
           items_loaded: 'INTEGER NOT NULL DEFAULT 0',
           active_ms: 'INTEGER NOT NULL DEFAULT 0',
           active_since: 'INTEGER',
+          vars: "TEXT NOT NULL DEFAULT '{}'",
         },
-        items: { step_id: 'TEXT' },
+        items: { step_id: 'TEXT', vars: "TEXT NOT NULL DEFAULT '{}'" },
         leases: { heartbeat: 'INTEGER NOT NULL DEFAULT 0' },
       })) {
         const columns = this.db
@@ -174,6 +181,16 @@ export class Ledger {
       this.db.exec('ROLLBACK')
       throw error
     }
+  }
+
+  /** Host checkpoints also identify runs made before driver reporting was added. */
+  driver(runId: string): 'host' | 'direct' {
+    const exists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'host_state'")
+      .get()
+    return exists && this.db.prepare('SELECT 1 FROM host_state WHERE run_id = ?').get(runId)
+      ? 'host'
+      : 'direct'
   }
 
   /**
@@ -252,6 +269,7 @@ export class Ledger {
       itemsLoaded: r.items_loaded === 1,
       params: JSON.parse(r.params),
       files: JSON.parse(r.files),
+      vars: JSON.parse(r.vars),
       status: r.status,
       phase: r.phase,
       step: r.step,
@@ -273,6 +291,7 @@ export class Ledger {
         | 'step'
         | 'stepId'
         | 'files'
+        | 'vars'
         | 'version'
         | 'message'
         | 'definition'
@@ -286,7 +305,7 @@ export class Ledger {
     for (const [k, v] of Object.entries(patch)) {
       sets.push(`${k === 'stepId' ? 'step_id' : k === 'itemsLoaded' ? 'items_loaded' : k} = ?`)
       values.push(
-        k === 'files' || k === 'definition'
+        k === 'files' || k === 'vars' || k === 'definition'
           ? JSON.stringify(v)
           : typeof v === 'boolean'
             ? Number(v)
@@ -338,6 +357,7 @@ export class Ledger {
       message: r.message,
       evidence: r.evidence,
       attempts: r.attempts,
+      vars: JSON.parse(r.vars),
     }))
   }
 
@@ -347,13 +367,15 @@ export class Ledger {
     patch: Partial<
       Pick<
         ItemRow,
-        'status' | 'step' | 'stepId' | 'committed' | 'cause' | 'message' | 'evidence' | 'attempts'
+        'status' | 'step' | 'stepId' | 'committed' | 'cause' | 'message' | 'evidence' | 'attempts' | 'vars'
       >
     >,
   ): void {
     this.#fence()
     const sets = Object.keys(patch).map((k) => `${k === 'stepId' ? 'step_id' : k} = ?`)
-    const values = Object.values(patch).map((v) => (typeof v === 'boolean' ? Number(v) : (v ?? null)))
+    const values = Object.values(patch).map((v) =>
+      typeof v === 'boolean' ? Number(v) : v && typeof v === 'object' ? JSON.stringify(v) : (v ?? null),
+    )
     this.db
       .prepare(`UPDATE items SET ${[...sets, 'updated_at = ?'].join(', ')} WHERE run_id = ? AND idx = ?`)
       .run(...(values as (string | number | null)[]), now(), runId, idx)

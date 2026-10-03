@@ -24,6 +24,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.5.15
         version: 2.5.15
+      '@types/chai':
+        specifier: 5.2.3
+        version: 5.2.3
       '@types/node':
         specifier: ^26.6.4
         version: 26.6.4

@@ -2,25 +2,84 @@ export type Scope = {
   param: Record<string, string>
   item: Record<string, string>
   files: Record<string, string>
+  /** Values saved by earlier http and mcp steps: the setup's, then the current item's own. */
+  vars?: Record<string, string>
+  /** Business key of the current item. */
+  key?: string
   /** Values of secret params, masked in every message Ritoko keeps or returns. */
   secrets?: string[]
+  /** Names of runtime credentials saved from API results; their values are never journaled. */
+  secretVars?: string[]
+  /** True once the current item's commit boundary has been crossed. */
+  committed?: boolean
   /** Folder that upload paths taken from item data must stay in. */
   inbox?: string
 }
 
-type Namespace = 'param' | 'item' | 'files'
+type Namespace = 'param' | 'item' | 'files' | 'vars'
 
-const PLACEHOLDER = /\{\{\s*(param|item|files)\.([^}]+?)\s*\}\}/g
+const PLACEHOLDER = /\{\{\s*(param|item|files|vars)\.([^}]+?)\s*\}\}/g
 
 function lookup(scope: Scope, ns: Namespace, key: string, template: string): string {
-  const value = Object.hasOwn(scope[ns], key) ? scope[ns][key] : undefined
-  if (value === undefined) throw new Error(`Unknown ${ns}.${key} in "${template}"`)
+  const values = scope[ns] ?? {}
+  const value = Object.hasOwn(values, key) ? values[key] : undefined
+  if (value === undefined)
+    throw new Error(
+      `Unknown ${ns}.${key} in "${template}"${ns === 'vars' ? ': no earlier step saved it (see "save")' : ''}`,
+    )
   return value
 }
 
-/** Replaces {{param.x}}, {{item.Column}} and {{files.name}}; throws on any unknown reference. */
+/** Replaces {{param.x}}, {{item.Column}}, {{files.name}} and {{vars.name}}; throws on any unknown reference. */
 export function render(template: string, scope: Scope): string {
   return template.replace(PLACEHOLDER, (_, ns: Namespace, key: string) => lookup(scope, ns, key, template))
+}
+
+/** Renders every string inside a JSON value (keys stay as written). */
+export function renderJson(value: unknown, scope: Scope): unknown {
+  if (typeof value === 'string') return render(value, scope)
+  if (Array.isArray(value)) return value.map((v) => renderJson(v, scope))
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, renderJson(v, scope)]))
+  return value
+}
+
+/** Hides the values of secret params: nothing Ritoko keeps or returns may contain one. */
+export const mask = (text: string, scope: Scope) =>
+  [...new Set((scope.secrets ?? []).flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)]))]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .reduce((masked, secret) => masked.replaceAll(secret, '***'), text)
+
+/** Check raw strings before JSON escaping can hide a secret from literal masking. */
+export function hasSecrets(value: unknown, scope: Scope): boolean {
+  if (typeof value === 'string') return mask(value, scope) !== value
+  if (value && typeof value === 'object') return Object.values(value).some((part) => hasSecrets(part, scope))
+  return false
+}
+
+/** Snapshot only non-secret variables. Runtime credentials must be obtained again after a restart. */
+export const snapshotVars = (scope: Scope): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(scope.vars ?? {}).filter(
+      ([name, value]) => !scope.secretVars?.includes(name) && mask(value, scope) === value,
+    ),
+  )
+
+/** Credential-like result fields are sensitive even when not known before the request. */
+export const credential = /authorization|cookie|api[-_]?key|token|secret|passw|pwd|session/i
+
+export function rememberSecrets(value: unknown, scope: Scope): void {
+  const remember = (found: unknown) => {
+    if (typeof found === 'string' && found) {
+      scope.secrets ??= []
+      if (!scope.secrets.includes(found)) scope.secrets.push(found)
+    } else if (found && typeof found === 'object') for (const part of Object.values(found)) remember(part)
+  }
+  if (value && typeof value === 'object')
+    for (const [name, found] of Object.entries(value))
+      if (credential.test(name)) remember(found)
+      else rememberSecrets(found, scope)
 }
 
 export function references(template: string): { ns: Namespace; key: string }[] {

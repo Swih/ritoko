@@ -1,7 +1,8 @@
 /**
- * In-page runtime of host mode: Ritoko compiles a slice of an item into this function's input, and the agent
- * runs it in its own integrated browser (Claude or Codex app), which no external process can drive.
- * It must stay self-contained: it is serialized with String() and evaluated in the page.
+ * In-page runtime of host mode: Ritoko compiles an item into plans, and the agent runs them in its own
+ * integrated browser (Claude or Codex app), which no external process can drive. The runtime function must
+ * stay self-contained (it is serialized with String() and evaluated in the page) and free of repeated spaces
+ * inside string literals (compact() squeezes them).
  */
 export type HostSelector = { by: string; [key: string]: unknown }
 export type HostTarget = { primary: HostSelector; fallbacks: HostSelector[]; frame?: string }
@@ -9,6 +10,7 @@ export type HostStep = {
   index: number
   id: string
   do: string
+  commit?: boolean
   target?: HostTarget
   value?: string
   checked?: boolean
@@ -16,18 +18,39 @@ export type HostStep = {
   text?: string
   url?: string
   ms?: number
+  fileName?: string
   timeoutMs: number
   onDialog?: 'accept' | 'dismiss'
   dialogText?: string
 }
-export type HostProgram = { steps: HostStep[]; budgetMs: number; token: string; carry?: string }
+/** A segment of an item (the steps between two navigations), plus how this call should run it. */
+export type HostProgram = {
+  steps: HostStep[]
+  /** Hand-off token of the item: a downloaded file travels as `<token>.<step index>`. */
+  token: string
+  /** First step to run: the page keeps the whole segment's plan, a later call resumes in the middle. */
+  from?: number
+  /** A wait that outlives this many ms returns `pending` and continues in the next call. */
+  budgetMs: number
+  /** Once the commit step ran, the call lasts this long at most: slow generations overlap across tabs. */
+  settleMs?: number
+  waitedMs?: number
+  /** Cursor after a navigation-only segment, with no page actions. */
+  next?: number
+}
+/** `sent`: index of the last step whose action was dispatched in this call (-1: none). */
 export type HostResult =
-  | { ok: true; next: number; staged?: { bytes: number; type: string } }
-  | { ok: true; pending: number }
-  | { ok: false; at: number; error: string; selector: boolean }
+  | { ok: true; next: number; sent: number; staged?: { bytes: number; type: string } }
+  | { ok: true; pending: number; sent: number; waited: number }
+  | { ok: false; at: number; error: string; selector: boolean; sent: number }
+  | { ok: false; missing: true }
 
 export async function hostProgram(program: HostProgram): Promise<HostResult> {
   const started = Date.now()
+  let deadline = started + program.budgetMs
+  let sent = -1
+  let staged: string | undefined
+  const dialogs = { confirm: window.confirm, alert: window.alert, prompt: window.prompt }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
   const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim()
   const visible = (el: Element) => el.getClientRects().length > 0
@@ -100,7 +123,7 @@ export async function hostProgram(program: HostProgram): Promise<HostResult> {
   }
   const locate = (t: HostTarget) => {
     const frame = t.frame ? (document.querySelector(t.frame) as HTMLIFrameElement | null) : null
-    const root = frame ? frame.contentDocument : document
+    const root = t.frame ? frame?.contentDocument : document
     if (!root) return undefined
     for (const s of [t.primary, ...t.fallbacks]) {
       const found = query(root, s).filter(visible)
@@ -110,7 +133,7 @@ export async function hostProgram(program: HostProgram): Promise<HostResult> {
   }
   class Miss extends Error {}
   const until = async <T>(fn: () => T | undefined, ms: number, what: string): Promise<T> => {
-    const end = Math.min(Date.now() + ms, started + program.budgetMs)
+    const end = Math.min(Date.now() + ms, deadline)
     for (;;) {
       const v = fn()
       if (v) return v
@@ -130,152 +153,245 @@ export async function hostProgram(program: HostProgram): Promise<HostResult> {
     el.dispatchEvent(new Event('input', { bubbles: true }))
     el.dispatchEvent(new Event('change', { bubbles: true }))
   }
-  const carried = async () => {
-    const data = program.carry ? decodeURIComponent(location.hash.slice(program.carry.length + 2)) : ''
-    if (!data.startsWith('data:'))
+  // Files arrive as data URLs from the boot snippet (in memory, or in sessionStorage when they fit).
+  const carried = (index: number) => {
+    const memory = (globalThis as { __ritokoFiles?: Record<string, string> }).__ritokoFiles
+    const data: string | undefined = (memory ?? JSON.parse(sessionStorage['ritoko:files'] ?? '{}'))[index]
+    if (!data?.startsWith('data:'))
       throw new Error('the file to upload did not reach the page (open the step URL first)')
-    history.replaceState(null, '', location.pathname + location.search)
-    const blob = await (await fetch(data)).blob()
-    return new File([blob], 'upload', { type: blob.type })
+    const bytes = Uint8Array.from(atob(data.slice(data.indexOf(',') + 1)), (c) => c.charCodeAt(0))
+    return new File([bytes], program.steps.find((s) => s.index === index)?.fileName ?? 'upload', {
+      type: data.slice(5, data.indexOf(';')),
+    })
+  }
+  // A click anywhere on this button is safe: it covers the page, and hands over the staged file if any.
+  const shield = () => {
+    const button = document.createElement('button')
+    button.id = 'ritoko-shield'
+    button.textContent = staged ? 'Ritoko · transmettre' : 'Ritoko'
+    button.style.cssText =
+      'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;margin:0;border:0;border-radius:0;background:rgba(179,48,26,.15);color:#fff;font:600 28px system-ui;cursor:pointer'
+    if (staged)
+      button.onclick = () => {
+        const area = document.createElement('textarea')
+        area.value = staged as string
+        area.style.cssText = 'position:fixed;left:-9999px'
+        document.body.append(area)
+        area.select()
+        const copied = document.execCommand('copy')
+        area.remove()
+        button.textContent = copied ? 'Ritoko · transmis' : 'Ritoko · échec'
+      }
+    ;(document.body ?? document.documentElement).append(button)
   }
 
-  for (const step of program.steps) {
-    try {
-      if (step.onDialog) {
-        const yes = step.onDialog === 'accept'
-        window.confirm = () => yes
-        window.alert = () => {}
-        window.prompt = () => (yes ? (step.dialogText ?? '') : null)
-      }
-      const target = step.target
-      const el = target
-        ? await until(
-            () => locate(target),
-            step.timeoutMs,
-            `no element matches ${JSON.stringify(target.primary)}`,
-          )
-        : undefined
-      switch (step.do) {
-        case 'fill':
-          setValue(el as HTMLElement, step.value ?? '')
-          break
-        case 'click':
+  document.getElementById('ritoko-shield')?.remove()
+  try {
+    for (const step of program.steps) {
+      if (step.index < (program.from ?? 0)) continue
+      const began = Date.now()
+      try {
+        if (step.onDialog) {
+          const yes = step.onDialog === 'accept'
+          window.confirm = () => yes
+          window.alert = () => {}
+          window.prompt = () => (yes ? (step.dialogText ?? '') : null)
+        }
+        const target = step.target
+        const el = target
+          ? await until(
+              () => locate(target),
+              step.timeoutMs,
+              `no element matches ${JSON.stringify(target.primary)}`,
+            )
+          : undefined
+        if (step.do === 'click')
           await until(
             () => !(el as HTMLButtonElement).disabled || undefined,
             step.timeoutMs,
             'the element stays disabled',
           )
-          el?.click()
-          break
-        case 'hover':
-          el?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
-          break
-        case 'check':
-          if ((el as HTMLInputElement).checked !== (step.checked ?? true)) el?.click()
-          break
-        case 'select': {
-          const select = el as HTMLSelectElement
-          const option = [...select.options].find(
-            (o) => norm(o.text) === step.value || o.value === step.value,
-          )
-          if (!option) throw new Error(`no option "${step.value}"`)
-          setValue(select, option.value)
-          break
-        }
-        case 'press':
-          ;(el ?? document.activeElement)?.dispatchEvent(
-            new KeyboardEvent('keydown', { key: step.key, bubbles: true }),
-          )
-          break
-        case 'upload': {
-          const file = await carried()
-          const dt = new DataTransfer()
-          dt.items.add(file)
-          if (el instanceof HTMLInputElement && el.type === 'file') {
-            el.files = dt.files
-            el.dispatchEvent(new Event('change', { bubbles: true }))
-          } else {
-            el?.focus()
-            el?.dispatchEvent(
-              new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
-            )
-          }
-          await sleep(1500)
-          break
-        }
-        case 'wait':
-          if (!target) await sleep(Math.min(step.ms ?? 0, program.budgetMs))
-          break
-        case 'expect':
-          if (step.text)
-            await until(
-              () => document.body.innerText.includes(step.text as string),
-              step.timeoutMs,
-              `text "${step.text}" not found`,
-            )
-          if (step.value !== undefined && (el as HTMLInputElement).value !== step.value)
-            throw new Error(`value is "${(el as HTMLInputElement).value}", expected "${step.value}"`)
-          if (step.url && !location.href.includes(step.url)) throw new Error(`url is ${location.href}`)
-          break
-        case 'download': {
-          // Capture what the click fetches (largest media response), and abort the site's own save: the app
-          // would otherwise open a native "Save as" dialog. The file then leaves through the clipboard.
-          const w = window as unknown as { fetch: typeof fetch; __ritokoFetch?: typeof fetch }
-          w.__ritokoFetch ??= w.fetch
-          const original = w.__ritokoFetch
-          const caught: Blob[] = []
-          w.fetch = async function (this: unknown, ...args: Parameters<typeof fetch>) {
-            const res = await original.apply(this, args)
-            const type = res.headers.get('content-type') ?? ''
-            if (/^(image|video|audio)\/|octet-stream/.test(type)) {
-              const blob = await res.clone().blob()
-              if (blob.size > 20_000) {
-                caught.push(blob)
-                throw new TypeError('ritoko: captured')
-              }
-            }
-            return res
-          } as typeof fetch
-          try {
+        // A download clicks once and must see its file: with little budget left it waits for the next call.
+        if (step.do === 'download' && deadline - Date.now() < 10_000)
+          return { ok: true, pending: step.index, sent, waited: Date.now() - began }
+        const file = step.do === 'upload' ? carried(step.index) : undefined
+        if (step.do !== 'expect' && step.do !== 'wait') sent = step.index
+        switch (step.do) {
+          case 'fill':
+            setValue(el as HTMLElement, step.value ?? '')
+            break
+          case 'click':
             el?.click()
-            await until(() => caught.length > 0 || undefined, step.timeoutMs, 'the click produced no file')
+            break
+          case 'hover':
+            el?.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+            break
+          case 'check':
+            if ((el as HTMLInputElement).checked !== (step.checked ?? true)) el?.click()
+            break
+          case 'select': {
+            const select = el as HTMLSelectElement
+            const option = [...select.options].find(
+              (o) => norm(o.text) === step.value || o.value === step.value,
+            )
+            if (!option) throw new Error(`no option "${step.value}"`)
+            setValue(select, option.value)
+            break
+          }
+          case 'press':
+            ;(el ?? document.activeElement)?.dispatchEvent(
+              new KeyboardEvent('keydown', { key: step.key, bubbles: true }),
+            )
+            break
+          case 'upload': {
+            const dt = new DataTransfer()
+            dt.items.add(file as File)
+            if (el instanceof HTMLInputElement && el.type === 'file') {
+              el.files = dt.files
+              el.dispatchEvent(new Event('change', { bubbles: true }))
+            } else {
+              el?.focus()
+              el?.dispatchEvent(
+                new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }),
+              )
+            }
             await sleep(1500)
-          } finally {
-            w.fetch = original
+            break
           }
-          const blob = caught.sort((a, b) => b.size - a.size)[0] as Blob
-          const data = await new Promise<string>((ok) => {
-            const reader = new FileReader()
-            reader.onload = () => ok(reader.result as string)
-            reader.readAsDataURL(blob)
-          })
-          document.getElementById('ritoko-handoff')?.remove()
-          const button = document.createElement('button')
-          button.id = 'ritoko-handoff'
-          button.textContent = 'Ritoko · transmettre'
-          button.style.cssText =
-            'position:fixed;right:24px;bottom:120px;z-index:2147483647;background:#b3301a;color:#fff;font:600 14px system-ui;padding:10px 16px;border:0;border-radius:8px'
-          button.onclick = () => {
-            const area = document.createElement('textarea')
-            area.value = `RITOKO|${program.token}|${data}`
-            area.style.cssText = 'position:fixed;left:-9999px'
-            document.body.append(area)
-            area.select()
-            const copied = document.execCommand('copy')
-            area.remove()
-            button.textContent = copied ? 'Ritoko · transmis' : 'Ritoko · échec'
+          case 'wait':
+            if (!target) {
+              const remaining =
+                (step.ms ?? 1000) - (step.index === program.from ? (program.waitedMs ?? 0) : 0)
+              const allowed = Math.max(0, deadline - Date.now())
+              await sleep(Math.min(Math.max(0, remaining), allowed))
+              if (remaining > allowed)
+                return { ok: true, pending: step.index, sent, waited: Date.now() - began }
+            }
+            break
+          case 'expect':
+            if (step.text)
+              await until(
+                () =>
+                  (target ? el?.innerText : document.body.innerText)?.includes(step.text as string) ||
+                  undefined,
+                step.timeoutMs,
+                `text "${step.text}" not found`,
+              )
+            if (step.value !== undefined && (el as HTMLInputElement).value !== step.value)
+              throw new Error(`value is "${(el as HTMLInputElement).value}", expected "${step.value}"`)
+            if (step.url && !location.href.includes(step.url)) throw new Error(`url is ${location.href}`)
+            break
+          case 'download': {
+            // Capture fetched files and direct download links. Stop the native save behind the shield.
+            const w = window as unknown as { fetch: typeof fetch; __ritokoFetch?: typeof fetch }
+            w.__ritokoFetch ??= w.fetch
+            const original = w.__ritokoFetch
+            const caught: Blob[] = []
+            let captureError: Error | undefined
+            const anchorClick = HTMLAnchorElement.prototype.click
+            const capture = (blob: Blob) => {
+              if (blob.size > 200 * 1024 * 1024) captureError = new Error('the download exceeds 200 MB')
+              else caught.push(blob)
+            }
+            const fetchLink = (href: string) => {
+              original(href, { credentials: 'include' })
+                .then(async (response) => {
+                  if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`)
+                  capture(await response.blob())
+                })
+                .catch((error) => {
+                  captureError = error as Error
+                })
+            }
+            const link = (event: Event) => {
+              const a = (event.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+              if (!a) return
+              event.preventDefault()
+              fetchLink(a.href)
+            }
+            HTMLAnchorElement.prototype.click = function () {
+              fetchLink(this.href)
+            }
+            document.addEventListener('click', link, true)
+            w.fetch = async function (this: unknown, ...args: Parameters<typeof fetch>) {
+              const res = await original.apply(this, args)
+              const type = res.headers.get('content-type') ?? ''
+              if (
+                /^(image|video|audio)\/|octet-stream|application\/pdf|text\/csv/.test(type) ||
+                res.headers.has('content-disposition')
+              ) {
+                const blob = await res.clone().blob()
+                capture(blob)
+              }
+              return res
+            } as typeof fetch
+            try {
+              el?.click()
+              // The click is done: waiting for its file is not bound by the call's budget (no second click).
+              const end = Date.now() + Math.min(step.timeoutMs, 60_000)
+              while (!caught.length) {
+                if (captureError) throw captureError
+                if (Date.now() > end) throw new Error('the click produced no file')
+                await sleep(100)
+              }
+              await sleep(1500)
+            } finally {
+              w.fetch = original
+              document.removeEventListener('click', link, true)
+              HTMLAnchorElement.prototype.click = anchorClick
+            }
+            const blob = caught.sort((a, b) => b.size - a.size)[0] as Blob
+            const data = await new Promise<string>((ok, fail) => {
+              const reader = new FileReader()
+              reader.onload = () => ok(reader.result as string)
+              reader.onerror = () => fail(reader.error ?? new Error('could not read the download'))
+              reader.readAsDataURL(blob)
+            })
+            staged = `RITOKO|${program.token}.${step.index}|${data}`
+            return {
+              ok: true,
+              next: step.index + 1,
+              sent,
+              staged: { bytes: blob.size, type: blob.type || 'application/octet-stream' },
+            }
           }
-          document.body.append(button)
-          return { ok: true, next: step.index + 1, staged: { bytes: blob.size, type: blob.type } }
         }
+        if (step.commit && program.settleMs) deadline = Math.min(deadline, Date.now() + program.settleMs)
+      } catch (error) {
+        const miss = error instanceof Miss
+        // A wait that outlives this call's budget continues in the next call.
+        if (miss && Date.now() >= deadline)
+          return { ok: true, pending: step.index, sent, waited: Date.now() - began }
+        return { ok: false, at: step.index, error: (error as Error).message, selector: miss, sent }
       }
-    } catch (error) {
-      const miss = error instanceof Miss
-      // A wait that outlives this call's budget continues in the next call.
-      if (miss && Date.now() >= started + program.budgetMs) return { ok: true, pending: step.index }
-      return { ok: false, at: step.index, error: (error as Error).message, selector: miss }
     }
+    const last = program.steps.at(-1)
+    return { ok: true, next: last ? last.index + 1 : (program.next ?? 0), sent }
+  } finally {
+    Object.assign(window, dialogs)
+    shield()
   }
-  const last = program.steps.at(-1)
-  return { ok: true, next: last ? last.index + 1 : 0 }
 }
+
+/** The runtime as an expression, without the indentation and comments that only cost tokens. */
+const compact = (source: string) =>
+  source
+    .split('\n')
+    .map((line) => line.trim().replace(/ {2,}/g, ' '))
+    .filter((line) => line && !line.startsWith('//'))
+    .join('\n')
+export const runtimeSource = `(${compact(String(hostProgram))})`
+
+/**
+ * What the agent runs in the page, synchronously first (the page's CSP forbids eval after an await): take the
+ * runtime and the plan from the #ritoko= fragment of the carry URL, or from sessionStorage (same tab, same
+ * origin: a reload or a post keeps them), and run the plan from step `from`. Without either, the page is
+ * covered by a bare shield (a click that follows in the same batch is harmless) and Ritoko sends the long form.
+ */
+const BOOT = `((o,t,w)=>{const g=self,[u,f]=location.href.split('#ritoko=');let d,s=g.__ritokoRun;try{d=JSON.parse(decodeURIComponent(f))}catch{}if(d){g.__ritokoFiles=d.files;s=g.__ritokoRun={r:d.runtime,p:d.plan};try{sessionStorage['ritoko:run']=JSON.stringify(s);sessionStorage['ritoko:files']=JSON.stringify(d.files)}catch{}history.replaceState(null,'',u)}if(!s)try{s=JSON.parse(sessionStorage['ritoko:run'])}catch{}if(!s||(t&&s.p.token!==t)){document.getElementById('ritoko-shield')?.remove();const b=document.createElement('button');b.id='ritoko-shield';b.style.cssText='position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh';document.body.append(b);return{ok:false,missing:true}}return(g.__ritokoHost??=(0,eval)(s.r))({...s.p,from:o,waitedMs:w})})`
+export const bootCode = (from: number, token?: string, waitedMs = 0) =>
+  `${BOOT}(${from},${JSON.stringify(token ?? '')},${waitedMs})`
+
+/** The long form: runtime and the plan itself in the code, for a page the carry did not reach. */
+export const inlineCode = (program: HostProgram) =>
+  `(globalThis.__ritokoHost ??= ${runtimeSource})(${JSON.stringify(program)})`

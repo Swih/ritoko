@@ -11,6 +11,7 @@ import { Ledger } from '../src/engine/ledger.ts'
 import { Runner } from '../src/engine/runner.ts'
 import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
 import { check, Store } from '../src/engine/store.ts'
+import { api } from './support/api.ts'
 
 const resources: { root: string; ledger: Ledger }[] = []
 afterEach(() => {
@@ -132,6 +133,46 @@ async function fixture(patch: Partial<WorkflowInput> = {}) {
 }
 
 describe('safe batch execution', () => {
+  it('retains item credentials only in memory across a post-commit repair on the same document', async () => {
+    const site = await api()
+    try {
+      const f = await fixture({
+        setup: [],
+        item: [
+          { id: 'session', do: 'http', url: `${site.url}/token`, save: { bearer: '/token' } },
+          { id: 'form', do: 'goto', url: 'https://example.test/form' },
+          { id: 'submit', do: 'click', target: target('#submit'), commit: true },
+          { id: 'proof', do: 'expect', target: target('#receipt'), timeoutMs: 20 },
+          {
+            id: 'api-proof',
+            do: 'http',
+            url: `${site.url}/orders/receipt`,
+            headers: { Authorization: 'Bearer {{vars.bearer}}' },
+            expect: { json: { '/status': 'paid' } },
+          },
+        ],
+      })
+      f.state.absent.add('#receipt')
+      const first = await f.start()
+      expect(first.status).toBe('needs_repair')
+      expect(f.state.clicks).toHaveLength(1)
+      expect(f.ledger.items(first.report.runId)[0]?.vars).toEqual({})
+      await f.runner.repair(first.report.runId, 'proof', target('#ok'))
+      const done = await f.runner.resume(first.report.runId)
+      expect(done.report.counts).toEqual({ done: 2 })
+      expect(f.state.clicks).toHaveLength(2)
+      expect(site.count('GET', '/token')).toBe(2)
+      expect(
+        site.seen.filter((r) => r.path === '/orders/receipt').map((r) => r.headers.authorization),
+      ).toEqual(['Bearer t-123', 'Bearer t-123'])
+      const journal = JSON.stringify(
+        ['runs', 'items', 'events'].map((table) => f.ledger.db.prepare(`SELECT * FROM ${table}`).all()),
+      )
+      expect(journal).not.toContain('t-123')
+    } finally {
+      await site.close()
+    }
+  })
   it('holds auto-submit uploads for review after an uncertain transfer', async () => {
     const f = await fixture({
       item: [
@@ -679,6 +720,41 @@ describe('journal and workflow safety', () => {
     const ledger = new Ledger(file)
     resources.push({ root, ledger })
     expect(ledger.run('old').activeMs).toBe(2500)
+  })
+
+  it('migrates journals created before saved variables', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ritoko-test-'))
+    const file = join(root, 'journal.db')
+    const legacy = new DatabaseSync(file)
+    legacy.exec(`CREATE TABLE runs (
+      id TEXT PRIMARY KEY, workflow TEXT NOT NULL, version INTEGER NOT NULL,
+      params TEXT NOT NULL, files TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL, phase TEXT NOT NULL DEFAULT 'setup', step INTEGER NOT NULL DEFAULT 0,
+      repeat INTEGER NOT NULL DEFAULT 0, message TEXT, started_at TEXT NOT NULL, finished_at TEXT);
+      CREATE TABLE items (
+        run_id TEXT NOT NULL REFERENCES runs(id), idx INTEGER NOT NULL, key TEXT NOT NULL, data TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending', step INTEGER NOT NULL DEFAULT 0, committed INTEGER NOT NULL DEFAULT 0,
+        cause TEXT, message TEXT, evidence TEXT, attempts INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, idx), UNIQUE (run_id, key))`)
+    legacy
+      .prepare(
+        "INSERT INTO runs (id, workflow, version, params, status, started_at) VALUES ('old', 'demo', 1, '{}', 'partial', ?)",
+      )
+      .run('2026-01-01T00:00:00.000Z')
+    legacy
+      .prepare(
+        "INSERT INTO items (run_id, idx, key, data, status, updated_at) VALUES ('old', 0, 'a', '{}', 'pending', ?)",
+      )
+      .run('2026-01-01T00:00:00.000Z')
+    legacy.close()
+    const ledger = new Ledger(file)
+    resources.push({ root, ledger })
+    expect(ledger.run('old').vars).toEqual({})
+    expect(ledger.items('old')[0]?.vars).toEqual({})
+    ledger.updateItem('old', 0, { vars: { id: 'o-1' } })
+    ledger.updateRun('old', { vars: { token: 't' } })
+    expect(ledger.items('old')[0]?.vars).toEqual({ id: 'o-1' })
+    expect(ledger.run('old').vars).toEqual({ token: 't' })
   })
 
   it('keeps remote download names inside the directory and rejects unsafe explicit names', () => {

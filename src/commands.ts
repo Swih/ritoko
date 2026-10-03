@@ -18,8 +18,8 @@ const USAGE = `ritoko <command>
   resolve <runId> <key> done|failed --note "site check"
   cancel <runId>                         stop a run for good; unsubmitted items fail as cancelled
   browser-close                          close Ritoko's Chrome explicitly
-  host start <workflow> [--param k=v]…   run a batch in the agent's integrated browser, one action at a time
-  host next <runId> [--result <json>]    report the last action's result, get the next action
+  host start <workflow> [--param k=v]… [--parallel 1..4]  print a host batch (requires script-capable browser tools)
+  host next <runId> [--result <json>]    report {batch, results} of the last batch, get the next one
 
 Workflows and runs live in ${paths.workflows} and ${paths.runs}.`
 
@@ -32,6 +32,7 @@ const { positionals, values } = parseArgs({
     help: { type: 'boolean', short: 'h', default: false },
     note: { type: 'string' },
     result: { type: 'string' },
+    parallel: { type: 'string' },
   },
 })
 if (values.headless) process.env.RITOKO_HEADLESS = '1'
@@ -39,6 +40,7 @@ if (values.headless) process.env.RITOKO_HEADLESS = '1'
 const [command, arg] = positionals
 const browser = new Browser()
 const runner = new Runner(browser, new Ledger(paths.db), new Store())
+let host: Host | undefined
 
 function print(outcome: Outcome): void {
   const { report } = outcome
@@ -111,21 +113,26 @@ try {
       await runner.ledger.exclusive(async () => browser.shutdown())
       break
     case 'host': {
-      const host = new Host(runner.ledger, runner.store)
+      host = new Host(runner.ledger, runner.store)
       const [, sub, target] = positionals
       if (sub === 'start' && target) {
         const params = Object.fromEntries(
-          (values.param as string[]).map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]),
-        )
-        console.log(JSON.stringify(await runner.ledger.exclusive(() => host.start(target, params))))
-      } else if (sub === 'next' && target) {
-        const result = values.result ? JSON.parse(values.result) : undefined
-        console.log(
-          JSON.stringify({
-            runId: target,
-            action: await runner.ledger.exclusive(() => host.next(target, result)),
+          (values.param as string[]).map((p) => {
+            const at = p.indexOf('=')
+            if (at < 1) throw new Error(`--param expects k=v, got "${p}"`)
+            return [p.slice(0, at), p.slice(at + 1)]
           }),
         )
+        console.log(
+          JSON.stringify(
+            await host.start(target, params, {
+              parallel: values.parallel === undefined ? 1 : Number(values.parallel),
+            }),
+          ),
+        )
+      } else if (sub === 'next' && target) {
+        const input = values.result ? JSON.parse(values.result) : undefined
+        console.log(JSON.stringify(await host.next(target, input)))
       } else throw new Error('host start <workflow> | host next <runId> [--result <json>]')
       break
     }
@@ -140,6 +147,7 @@ try {
   console.error(`ritoko: ${(error as Error).message}`)
   process.exitCode = 1
 } finally {
+  await host?.close()
   await browser.close()
   runner.ledger.db.close()
 }

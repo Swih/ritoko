@@ -3,7 +3,7 @@ import { rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, win32 } from 'node:path'
 import type { Download, Locator, Page } from 'playwright-core'
 
-const MAX_BYTES = 200 * 1024 * 1024
+export const MAX_BYTES = 200 * 1024 * 1024
 const tooLarge = () => new Error(`Download exceeds the ${MAX_BYTES / 1024 / 1024} MB limit`)
 
 /** Percent-decoded file name; a malformed escape keeps the name as sent. */

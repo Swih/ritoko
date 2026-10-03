@@ -97,6 +97,47 @@ export async function lab() {
       )
       return
     }
+    // Host mode pages: no navigation after a click (a page's program must survive it), a file read in the page,
+    // and a generation whose result is fetched, as an AI studio does.
+    if (req.url === '/spa') {
+      res.end(
+        html(`<label for="e">Email</label><input id="e"><label for="n">Name</label><input id="n">
+        <button onclick="go()">Create customer</button><p id="out" role="status"></p>
+        <script>go = async () => {
+          const r = await fetch('/submit', { method: 'POST', body: new URLSearchParams({ Email: e.value, Name: n.value }) })
+          out.textContent = (await r.text()).match(/Created [^<]*/)?.[0] ?? 'Failed'
+        }</script>`),
+      )
+      return
+    }
+    if (req.url === '/pick') {
+      res.end(
+        html(`<label for="f">File</label><input id="f" type="file" onchange="show(this.files[0])">
+        <p id="out" role="status"></p>
+        <script>show = async (file) => { out.textContent = file.name + ':' + file.type + ':' + (await file.text()) }</script>`),
+      )
+      return
+    }
+    if (req.url === '/gen') {
+      res.end(
+        html(`<p id="state">Generating</p><script>setTimeout(() => {
+          state.textContent = 'Ready'
+          document.body.insertAdjacentHTML('beforeend', '<button id="save">Save image</button>')
+          save.onclick = async () => {
+            const a = document.createElement('a')
+            a.href = URL.createObjectURL(await (await fetch('/image')).blob())
+            a.download = 'x.png'
+            a.click()
+          }
+        }, 400)</script>`),
+      )
+      return
+    }
+    if (req.url === '/image') {
+      res.setHeader('content-type', 'image/png')
+      res.end(Buffer.alloc(30_000, 7))
+      return
+    }
     if (req.url === '/job') {
       res.end(
         html(`<p id="state">Generating</p><script>setTimeout(() => {

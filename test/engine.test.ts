@@ -3,7 +3,7 @@ import { cell, decode, parseCsv } from '../src/engine/items.ts'
 import { Ledger } from '../src/engine/ledger.ts'
 import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
 import { check } from '../src/engine/store.ts'
-import { render, renderSelector } from '../src/engine/template.ts'
+import { mask, render, renderSelector, snapshotVars } from '../src/engine/template.ts'
 
 const scope = {
   param: { month: '2026-09' },
@@ -12,6 +12,13 @@ const scope = {
 }
 
 describe('render', () => {
+  it('masks credentials inside JSON strings and excludes serialized credential objects from snapshots', () => {
+    const secret = 'abc"def\\newline\n'
+    const value = JSON.stringify({ nested: { token: secret } })
+    const runtime = { ...scope, secrets: [secret], vars: { bundle: value, id: 'ordinary-id' } }
+    expect(mask(value, runtime)).toBe('{"nested":{"token":"***"}}')
+    expect(snapshotVars(runtime)).toEqual({ id: 'ordinary-id' })
+  })
   it('replaces params, item columns and files', () => {
     expect(render('{{param.month}} {{ item.First Name }} {{files.in.xlsx}}', scope)).toBe(
       '2026-09 Ada /tmp/in.xlsx',
@@ -20,6 +27,13 @@ describe('render', () => {
   it('throws on unknown references', () => {
     expect(() => render('{{item.Email}}', scope)).toThrow('Unknown item.Email')
     expect(() => render('{{item.toString}}', scope)).toThrow('Unknown item.toString')
+  })
+  it('replaces saved variables and explains one that was never saved', () => {
+    expect(render('/orders/{{vars.id}}', { ...scope, vars: { id: 'o-1' } })).toBe('/orders/o-1')
+    expect(() => render('{{vars.id}}', scope)).toThrow(
+      'Unknown vars.id in "{{vars.id}}": no earlier step saved it',
+    )
+    expect(() => render('{{vars.toString}}', { ...scope, vars: {} })).toThrow('Unknown vars.toString')
   })
   it('quotes values inserted into selectors', () => {
     const name = { ...scope, item: { Name: `O'Brien "Bob"`, Row: '2' } }
@@ -133,6 +147,211 @@ describe('check', () => {
     expect(() =>
       check(wf({ item: [wf().item[1] as Workflow['item'][number]].map((s) => ({ ...s, commit: false })) })),
     ).toThrow('commit')
+  })
+})
+
+describe('check for http and mcp steps', () => {
+  const post = {
+    id: 'send',
+    do: 'http' as const,
+    method: 'POST' as const,
+    url: 'https://api.example.test/orders',
+    commit: true,
+    expect: { status: [201] },
+  }
+  const read = (patch: object = {}) => ({
+    id: 'read',
+    do: 'http' as const,
+    url: 'https://api.example.test/orders/1',
+    expect: { json: { '/status': 'paid' } },
+    ...patch,
+  })
+  const tool = (patch: object = {}) => ({
+    id: 'tool',
+    do: 'mcp' as const,
+    server: 'shop',
+    tool: 'get_order',
+    readOnly: true,
+    expect: { json: { '/status': 'paid' } },
+    ...patch,
+  })
+  const servers = { shop: { command: 'node', args: ['shop.js'] } }
+  const api = (item: WorkflowInput['item'], patch: Partial<WorkflowInput> = {}) =>
+    wf({ item, servers, ...patch })
+
+  it('accepts a request or a tool call as the commit, verified by its own expect or a read after it', () => {
+    expect(check(api([post]))).toEqual([])
+    expect(check(api([{ ...post, expect: undefined }, read()]))).toEqual([])
+    expect(check(api([{ ...post, method: 'DELETE', expect: undefined, commit: true }, tool()]))).toEqual([])
+    expect(check(api([tool({ readOnly: undefined, commit: true })]))).toEqual([])
+  })
+
+  it('needs an explicit proof: a default 2xx status is not one', () => {
+    expect(() => check(api([{ ...post, expect: undefined }]))).toThrow(
+      'An item needs an expect after its commit',
+    )
+    expect(() => check(api([{ ...post, expect: {} }]))).toThrow('An item needs an expect after its commit')
+    expect(() => check(api([{ ...post, expect: undefined }, read({ expect: undefined })]))).toThrow(
+      'after its commit',
+    )
+    expect(check(api([post, read()]))).toEqual([])
+  })
+
+  it('allows only reads after the commit', () => {
+    expect(() => check(api([post, read({ method: 'POST' })]))).toThrow("must be the item's commit")
+    expect(() => check(api([post, tool({ readOnly: false })]))).toThrow("must be the item's commit")
+    expect(check(api([post, read({ method: 'HEAD' }), tool()]))).toEqual([])
+  })
+
+  it('lets a read-only workflow send reads only', () => {
+    expect(check(api([read(), tool()], { readOnly: true }))).toEqual([])
+    expect(() => check(api([read({ method: 'PUT' })], { readOnly: true }))).toThrow(
+      "must be the item's commit",
+    )
+    expect(() => check(api([tool({ readOnly: false })], { readOnly: true }))).toThrow(
+      "must be the item's commit",
+    )
+  })
+
+  it('keeps item data and saved values out of the host of a URL', () => {
+    const to =
+      (url: string, patch: Partial<WorkflowInput> = {}) =>
+      () =>
+        check(api([post, read({ url })], patch))
+    for (const url of [
+      'https://{{item.Host}}/x',
+      '{{item.Url}}',
+      '{{param.input}}{{item.Path}}',
+      'https://api.example.test{{item.Path}}',
+      'https://{{item.a/b}}/x',
+    ])
+      expect(to(url, { params: { input: {} } }), url).toThrow('host of a URL')
+    expect(() =>
+      check(api([read({ id: 'save', save: { u: '/url' } }), post, read({ url: '{{vars.u}}/x' })])),
+    ).toThrow('host of a URL')
+    for (const url of [
+      '{{param.input}}/orders/{{item.Id}}?q={{item.Q}}',
+      'https://api.example.test/{{item.Id}}',
+      'https://api.example.test?next={{item.Next}}@evil.test',
+    ])
+      expect(to(url, { params: { input: {} } })).not.toThrow()
+  })
+
+  it("knows the variables a step can use: the setup's, then its own item's", () => {
+    const save = read({ id: 'save', save: { id: '/id' } })
+    const use = read({ id: 'use', url: 'https://api.example.test/orders/{{vars.id}}' })
+    expect(check(api([save, post, use]))).toEqual([])
+    expect(() => check(api([post, use]))).toThrow('"vars.id" is not saved by an earlier step')
+    expect(check(api([post, read()], { setup: [save], teardown: [use] }))).toEqual([])
+    // Another item's variables do not exist in the teardown, nor in the batch description.
+    expect(() => check(api([save, post], { teardown: [use] }))).toThrow('"vars.id" is not saved')
+    expect(() =>
+      check(api([save, post], { items: { from: '{{param.input}}', key: '{{vars.id}}' } })),
+    ).toThrow('"vars.id" is not saved')
+  })
+
+  it('checks servers, files and bodies', () => {
+    expect(() => check(api([post, tool({ server: 'other' })]))).toThrow('unknown server "other"')
+    expect(() => check(api([post, tool({ file: '/path' })]))).toThrow('"file" needs saveAs')
+    expect(() => check(api([read({ body: { text: 'x' } }), post]))).toThrow('GET requests have no body')
+    expect(() => check(api([post, tool()], { servers: { shop: { command: '{{item.Cmd}}' } } }))).toThrow(
+      'only {{param.*}}',
+    )
+    expect(() =>
+      check(api([post, tool()], { servers: { shop: { url: 'https://{{vars.h}}/mcp' } } })),
+    ).toThrow('only {{param.*}}')
+    expect(check(api([post, tool()], { servers: { shop: { ref: 'claude' } } }))).toEqual([])
+  })
+
+  it('refuses credentials written into workflow headers or server configuration', () => {
+    const secret = { input: {}, key: { secret: true, env: 'SHOP_KEY' } }
+    const literal = read({
+      headers: { Authorization: 'Bearer abc', 'X-Api-Key': '{{param.key}}', Accept: 'a/b' },
+    })
+    expect(() => check(api([post, literal], { params: secret }))).toThrow(
+      '"Authorization" holds a credential',
+    )
+    expect(
+      check(api([read({ headers: { 'X-Api-Key': '{{param.key}}' } }), post], { params: secret })),
+    ).toEqual([])
+    expect(() =>
+      check(
+        api([post, tool()], {
+          servers: { shop: { url: 'https://x.test/mcp', headers: { Authorization: 'abc' } } },
+        }),
+      ),
+    ).toThrow('servers.shop: "Authorization" holds a credential')
+    expect(() => check(api([tool({ readOnly: undefined }), post]))).toThrow("must be the item's commit")
+  })
+
+  it('allows long waits and strict bodies in the schema', () => {
+    const parse = (step: object) => Workflow.parse({ name: 'x', description: 'x', item: [step] })
+    expect(() => parse({ do: 'http', url: 'https://x.test', timeoutMs: 900_000 })).not.toThrow()
+    expect(() => parse({ do: 'mcp', server: 's', tool: 't', timeoutMs: 900_000 })).not.toThrow()
+    expect(() => parse({ do: 'http', url: 'https://x.test', timeoutMs: 900_001 })).toThrow()
+    expect(() => parse({ do: 'http', url: 'https://x.test', body: { json: {}, text: 'x' } })).toThrow()
+    expect(() => parse({ do: 'http', url: 'https://x.test', save: { 'bad name': '/x' } })).toThrow()
+    expect(() =>
+      parse({ do: 'http', url: 'https://x.test', expect: { json: { 'no-slash': 'x' } } }),
+    ).toThrow()
+    expect(parse({ do: 'http', url: 'https://x.test' }).item[0]).toMatchObject({
+      method: 'GET',
+      session: 'none',
+    })
+  })
+
+  it('refuses replayable writes outside the commit and secret references in agent-managed arguments', () => {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'] as const) {
+      expect(() => check(api([read({ method }), post]))).toThrow("must be the item's commit")
+      expect(() => check(api([post], { setup: [read({ method })] }))).toThrow("must be the item's commit")
+      expect(() => check(api([post], { teardown: [read({ method })] }))).toThrow("must be the item's commit")
+    }
+    expect(() =>
+      check(
+        api([post, tool({ args: { token: '{{param.key}}' } })], {
+          params: { input: {}, key: { secret: true, env: 'SHOP_KEY' } },
+          servers: { shop: { ref: 'agent' } },
+        }),
+      ),
+    ).toThrow('must not reference secrets')
+    expect(() =>
+      check(
+        api([post, tool({ args: { token: '{{vars.auth}}' } })], {
+          setup: [read({ id: 'auth', save: { auth: '/access_token' } })],
+          servers: { shop: { ref: 'agent' } },
+        }),
+      ),
+    ).toThrow('must not reference secrets')
+    expect(() =>
+      Workflow.parse({
+        name: 'x',
+        description: 'x',
+        setup: [{ do: 'http', url: 'https://x.test', save: { id: '/invalid~escape' } }],
+      }),
+    ).toThrow()
+  })
+
+  it('keeps credentials out of persisted filenames, source paths, URLs and business identities', () => {
+    const params = { input: {}, key: { secret: true, env: 'SHOP_KEY' } }
+    expect(() => check(api([post, read({ saveAs: '{{param.key}}.json' })], { params }))).toThrow(
+      'must not reference secrets',
+    )
+    expect(() => check(api([post, read({ url: 'https://x.test/{{param.key}}' })], { params }))).toThrow(
+      'must not reference secrets',
+    )
+    expect(() =>
+      check(api([post], { params, items: { from: '{{param.key}}', key: '{{item.Email}}' } })),
+    ).toThrow('must not reference secrets')
+    expect(() =>
+      check(api([post], { params, items: { from: '{{param.input}}', key: '{{param.key}}' } })),
+    ).toThrow('must not reference secrets')
+    expect(() =>
+      check(
+        api([post, read({ saveAs: '{{vars.auth}}.json' })], {
+          setup: [read({ id: 'auth', save: { auth: '/access_token' } })],
+        }),
+      ),
+    ).toThrow('must not reference secrets')
   })
 })
 

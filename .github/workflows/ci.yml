@@ -35,6 +35,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test
+      - run: pnpm build
 
   e2e:
     name: e2e, real Chrome (${{ matrix.os }})
@@ -53,6 +54,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       # The runner images ship Google Chrome, which chromePath() in src/engine/browser.ts finds by itself
       # (/usr/bin/google-chrome, C:\Program Files\Google\Chrome\..., /Applications/Google Chrome.app). RITOKO_CHROME_PATH is not needed.
       - run: pnpm test:e2e

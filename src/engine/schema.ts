@@ -46,6 +46,17 @@ const dialog = {
   dialogText: z.string().optional(),
 }
 
+/** A JSON Pointer (RFC 6901): "" is the whole document. */
+const pointer = z
+  .string()
+  .regex(/^(\/(?:[^~]|~[01])*)?$/, 'a JSON pointer: "" or starting with /, with ~0 and ~1 escapes')
+/** Checks on a JSON result: pointer -> expected text (a template), compared with the value found there. */
+const checks = z.record(pointer, z.string())
+/** Variables to keep from a JSON result for later steps: name -> pointer, used as `{{vars.name}}`. */
+const save = z.record(z.string().regex(/^\w+$/, 'a variable name'), pointer).optional()
+/** A file kept from the result, like download: a template, sanitized, never overwriting. */
+const saveAs = z.string().optional()
+
 export const Step = z.discriminatedUnion('do', [
   z.object({ ...base, do: z.literal('goto'), url: z.string() }),
   z.object({ ...base, ...dialog, do: z.literal('click'), target: Target }),
@@ -84,10 +95,69 @@ export const Step = z.discriminatedUnion('do', [
     target: Target.optional(),
     ms: z.number().int().positive().optional(),
   }),
+  /**
+   * An HTTP request, sent by Ritoko itself (no browser unless `session` is "browser"). Every string is a
+   * template. Only GET/HEAD before commit may retry; secrets come from secret params, rendered when sent.
+   */
+  z.object({
+    ...base,
+    ...patient,
+    do: z.literal('http'),
+    method: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']).default('GET'),
+    url: z.string(),
+    headers: z.record(z.string(), z.string()).optional(),
+    query: z.record(z.string(), z.string()).optional(),
+    body: z
+      .union([
+        z.strictObject({ json: z.json() }),
+        z.strictObject({ form: z.record(z.string(), z.string()) }),
+        z.strictObject({ text: z.string() }),
+      ])
+      .optional(),
+    /** Default: any 2xx status. */
+    expect: z
+      .strictObject({ status: z.array(z.number().int()).optional(), json: checks.optional() })
+      .optional(),
+    save,
+    saveAs,
+    /** Sends `Idempotency-Key`, stable for the same workflow, scope, item and step. */
+    idempotencyKey: z.boolean().optional(),
+    /** "browser" sends it through the Ritoko browser's own session (its cookies). */
+    session: z.enum(['none', 'browser']).default('none'),
+  }),
+  /** A call to a tool of an MCP server declared in the workflow's `servers`. */
+  z.object({
+    ...base,
+    ...patient,
+    do: z.literal('mcp'),
+    server: z.string(),
+    tool: z.string(),
+    /** String values are templates; one that the tool's input schema types as a number or boolean is converted. */
+    args: z.record(z.string(), z.json()).optional(),
+    expect: z.strictObject({ json: checks }).optional(),
+    save,
+    saveAs,
+    /** Pointer to a local path or URL in the result, to keep as the file (else its first image, audio or resource). */
+    file: pointer.optional(),
+    /** The tool only reads: allowed after the commit and in read-only workflows. */
+    readOnly: z.boolean().optional(),
+  }),
 ])
 export type Step = z.infer<typeof Step> & { id: string }
 type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never
 export type StepBody = WithoutId<Step>
+
+/** An MCP server a workflow calls: a program to start, a URL, or the one of the same name in Claude Code's configuration. */
+const Server = z.union([
+  z.strictObject({
+    command: z.string(),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    cwd: z.string().optional(),
+  }),
+  z.strictObject({ url: z.string(), headers: z.record(z.string(), z.string()).optional() }),
+  z.strictObject({ ref: z.enum(['claude', 'agent']) }),
+])
 
 export const Workflow = z
   .object({
@@ -112,6 +182,8 @@ export const Workflow = z
         }),
       )
       .default({}),
+    /** MCP servers for `mcp` steps, started or contacted once per run. Strings are templates (params only). */
+    servers: z.record(z.string().regex(/^[\w-]+$/), Server).default({}),
     /** Batch source: a template resolving to an .xlsx or .csv path, e.g. "{{files.input}}" or "{{param.input}}". */
     items: z
       .object({

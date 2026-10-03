@@ -10,8 +10,10 @@ import { z } from 'zod'
 import { Browser } from '../engine/browser.ts'
 import { withDialogs } from '../engine/dialog.ts'
 import { download } from '../engine/download.ts'
+import { Host } from '../engine/host.ts'
 import { Ledger, processAlive } from '../engine/ledger.ts'
 import { candidates, describe } from '../engine/locate.ts'
+import { NetworkCapture } from '../engine/network.ts'
 import { home, paths } from '../engine/paths.ts'
 import { type Outcome, type Report, Runner } from '../engine/runner.ts'
 import { type Step, type StepBody, Target, type Workflow } from '../engine/schema.ts'
@@ -22,6 +24,7 @@ const store = new Store()
 // The server's working directory means nothing to the agent: local paths must be absolute.
 const runner = new Runner(browser, new Ledger(paths.db), store, paths.runs, { absolutePaths: true })
 const recording: Step[] = []
+const network = new NetworkCapture()
 /** Selectors of password inputs filled while recording: a workflow must not store their literal values. */
 const passwordFields = new Set<string>()
 
@@ -40,6 +43,7 @@ const tool: typeof server.registerTool = (name, config, handler) =>
     try {
       return await (handler as (...args: unknown[]) => unknown)(...args)
     } catch (error) {
+      network.end()
       throw busy(error as Error)
     }
   }) as typeof handler)
@@ -76,8 +80,9 @@ const progressOf = (runId: string) => {
   return `${done}/${total}`
 }
 
-/** A run that the journal still marks running while no process executes it was interrupted. */
-const statusOf = (status: string) => (status === 'running' && !holder() ? 'interrupted' : status)
+/** Direct execution without a lease was interrupted. Host batches normally wait without a lease. */
+const statusOf = (status: string, runId: string) =>
+  status === 'running' && runner.ledger.driver(runId) !== 'host' && !holder() ? 'interrupted' : status
 
 function known(runId: string) {
   try {
@@ -107,8 +112,9 @@ function summary(
   const shown = listed.slice(offset, offset + limit).map((i) => ({ ...i, evidence: local(i.evidence) }))
   const more = listed.length - offset - shown.length
   return {
-    status: statusOf(status),
+    status: statusOf(status, report.runId),
     runId: report.runId,
+    driver: report.driver,
     workflow: report.workflow,
     message: report.message,
     durationMs: report.durationMs,
@@ -336,10 +342,19 @@ tool(
     title: 'Act on the page',
     description:
       "Performs actions on elements of the current page by ref, while recording a task (batch several in one call), and returns the recorded steps plus a new snapshot. Each step gets verified selectors (role, label, text… best first; fragile: true marks a positional last resort to replace). `inspect` acts on nothing and returns selector candidates, e.g. for step_repair. Only the user decides what to submit; upload only files the user named; never type the user's passwords (ask them to log in in the window). Refused while a submitted run item awaits verification.",
-    inputSchema: { actions: z.array(Action).min(1), snapshot: z.boolean().default(true) },
+    inputSchema: {
+      actions: z.array(Action).min(1),
+      snapshot: z.boolean().default(true),
+      captureNetwork: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Opt-in fetch/XHR hints: method, route pattern, status and field names, never header/body/query values. API replacement still needs verification on one row.',
+        ),
+    },
     annotations: { destructiveHint: true, openWorldHint: true },
   },
-  async ({ actions, snapshot: wantSnapshot }) =>
+  async ({ actions, snapshot: wantSnapshot, captureNetwork }) =>
     runner.ledger.exclusive(async () => {
       const page = await browser.page()
       const results: unknown[] = []
@@ -353,13 +368,20 @@ tool(
           'A submitted item is awaiting verification. Inspect and repair its verification step (step_repair, then run_resume), or run_cancel the run to hold the item for review; do not perform browser actions that may submit again.',
         )
       for (const a of actions) {
+        const stepId = `s${recording.length + 1}`
+        if (captureNetwork && a.do !== 'inspect') network.begin(page, stepId)
+        else network.end()
         const answer = a.do === 'click' || a.do === 'press' ? { onDialog: a.dialog, dialogText: a.value } : {}
         // A step records the answer only when its dialog actually appeared.
         const report = (dialog: string | undefined) => (a.dialog ? { dialog: dialog ?? 'none appeared' } : {})
         if (a.do === 'press' && !a.ref) {
           const key = a.key ?? 'Enter'
           const dialog = await withDialogs(page, answer, () => page.keyboard.press(key))
-          results.push({ step: record({ do: 'press', key, ...(dialog ? answer : {}) }), ...report(dialog) })
+          results.push({
+            step: record({ do: 'press', key, ...(dialog ? answer : {}) }),
+            ...(captureNetwork && { network: network.hints(stepId) }),
+            ...report(dialog),
+          })
           continue
         }
         if (!a.ref) throw new Error(`"${a.do}" needs a ref`)
@@ -434,9 +456,11 @@ tool(
           step: record(step),
           ...(found.fragile && { fragile: true }),
           ...(downloadedFile ? { downloadedFile } : {}),
+          ...(captureNetwork && { network: network.hints(stepId) }),
           ...report(dialog),
         })
       }
+      network.end()
       return { content: wantSnapshot ? [block(results), block(await snapshot(page))] : [block(results)] }
     }),
 )
@@ -449,13 +473,27 @@ tool(
       'Steps recorded by browser_open and browser_act since the last clear or workflow_save. Call with clear: true before recording a new task. Then write the workflow from them: replace literal values with {{item.Column}} or {{param.name}}, add expect steps, mark the submit step commit: true, and call workflow_save.',
     inputSchema: {
       clear: z.boolean().default(false).describe('Return the steps, then empty the recording.'),
+      network: z
+        .boolean()
+        .default(false)
+        .describe(
+          'Include captured network hints and late response status; metadata for a proposed API step, never a replay instruction.',
+        ),
     },
     annotations: { destructiveHint: false, openWorldHint: false },
   },
-  async ({ clear }) => {
+  async ({ clear, network: wantNetwork }) => {
     const steps = [...recording]
-    if (clear) recording.length = 0
-    return text(steps)
+    const hints = Object.fromEntries(
+      steps
+        .map((step) => [step.id, network.hints(step.id)])
+        .filter(([, hints]) => (hints as unknown[]).length),
+    )
+    if (clear) {
+      recording.length = 0
+      network.clear()
+    }
+    return text(wantNetwork ? { steps, network: hints } : steps)
   },
 )
 
@@ -465,8 +503,8 @@ tool(
     title: 'Save a workflow',
     description: [
       'Validates and saves a workflow as a new version, then clears the recording. Returns its name, version and warnings to fix (fragile selectors, literal passwords); invalid input returns path: message errors. workflow_get shows a saved example.',
-      'Shape: {name: kebab-case, description, readOnly?, params?: {<name>: {description?, required? (default true), default?} or, for a credential, {secret: true, env: "ENV_VAR"}}, items?: {from: "{{param.input}}" or "{{files.<saveAs>}}", key: "{{item.<Column>}}", scope?, sheet?, required?: [Column]}, setup?: Step[], item?: Step[], teardown?: Step[]}.',
-      'Step: {id? (s1… assigned), do, commit? (one click, press, upload, select or check per item), note?, timeoutMs? (max 120000; 900000 for wait, expect and download)} plus, by do: goto {url} | click {target, onDialog?: accept|dismiss, dialogText?} | hover {target} | fill, select {target, value} | check {target, checked?} | press {key, target?, onDialog?} | upload {target, file} | download {target, saveAs: file name, may use {{item.Col}}} | extract {target, saveAs: "*.csv"} | expect {target?, text?, value?, url?} | wait {target?, ms?}.',
+      'Shape: {name,description,readOnly?,params?: {<name>: {description?,required?,default?} or {secret:true,env:"ENV_VAR"}},items?: {from,key,scope?,sheet?,required?},servers?: {<name>: {command,args?,env?,cwd?}|{url,headers?}|{ref:"claude"}|{ref:"agent"}},setup?: Step[],item?: Step[],teardown?: Step[]}. ref:agent uses an existing tool via host mode, without starting another server.',
+      'Step: {id?,do,commit?,note?,timeoutMs?} plus: goto {url}|click/hover {target}|fill/select {target,value}|check {target,checked?}|press {key,target?}|upload {target,file}|download/extract {target,saveAs}|expect {target?,text?,value?,url?}|wait {target?,ms?}|http {url,method?,headers?,query?,body?:{json}|{form}|{text},expect?:{status?:[200],json?:{"/pointer":"expected template"}},save?:{name:"/pointer"},saveAs?,idempotencyKey?,session?:"none"|"browser"}|mcp {server,tool,args?,expect?:{json},save?,saveAs?,file?:"/pointer",readOnly?}. save feeds {{vars.name}}. click/press accept onDialog/dialogText. HTTP/MCP execute in Node; only steps needing a browser open one. Writes must be the one commit; later steps only verify/read. Credentials use secret params. Max 900000ms for wait/expect/download/http/mcp, 120000 otherwise.',
       'Target: {primary: Selector, fallbacks?: Selector[], frame?, description?}, as recorded. Selector: {by: "role", role, name?, exact?} | {by: "label" | "placeholder" | "text", text, exact?} | {by: "testid", id} | {by: "css", css} | {by: "xpath", xpath}.',
     ].join(' '),
     inputSchema: { workflow: z.looseObject({}).describe('The workflow JSON described above.') },
@@ -487,6 +525,7 @@ tool(
             `${step.id}: a literal password is stored in the workflow. Use "{{param.password}}" with params.password = {secret: true, env: "<ENV_VAR>"}: read from the environment at run time, never stored.`,
           )
       recording.length = 0
+      network.clear()
       passwordFields.clear()
       const { name, version } = saved.workflow
       return text({ name, version, warnings: saved.warnings })
@@ -561,7 +600,7 @@ tool(
   {
     title: 'Resume a run',
     description:
-      'Finishes an existing paused, interrupted or partial run: done items are kept, failed ones retried, and an item interrupted after its commit step becomes review, never replayed blindly. Use it when the user asks to finish or resume (find the run with run_report or run_list; if there is none, say so and ask), and after step_repair. Returns the same bounded result as run_start.',
+      'Finishes an existing direct run: done items are kept, failed ones retried, and an item interrupted after its commit step becomes review, never replayed blindly. Read driver in run_report or run_list first: host runs require host_next and are refused here without altering their journal. Use after step_repair or when the user asks to resume an existing direct run. Returns the same bounded result as run_start.',
     inputSchema: { runId: z.string() },
     annotations: { destructiveHint: true, openWorldHint: true },
   },
@@ -610,7 +649,7 @@ tool(
   {
     title: 'List runs',
     description:
-      'Read-only. Latest runs, newest first: runId, workflow, status, counts, start and end times. Use it to find the run to resume or report on; "interrupted" means its process died mid-run (run_resume finishes it).',
+      'Read-only. Latest runs, newest first: runId, workflow, driver (direct or host), status, counts, start and end times. Resume direct runs with run_resume and host runs with host_next. "interrupted" means a direct run lost its execution lease; a running host batch can be awaiting the agent and has no lease between calls.',
     inputSchema: {
       workflow: z.string().optional(),
       status: z.enum(['running', 'interrupted', 'paused', 'done', 'partial', 'stopped']).optional(),
@@ -626,13 +665,14 @@ tool(
       .iterate(workflow ?? null)
     const runs = []
     for (const row of rows) {
-      const state = statusOf(String(row.status))
+      const state = statusOf(String(row.status), String(row.id))
       if (status && state !== status) continue
       const counts = runner.ledger.db
         .prepare('SELECT status, COUNT(*) AS n FROM items WHERE run_id = ? GROUP BY status')
         .all(String(row.id))
       runs.push({
         runId: row.id,
+        driver: runner.ledger.driver(String(row.id)),
         workflow: row.workflow,
         status: state,
         message: row.message,
@@ -672,7 +712,9 @@ tool(
       if (item.status === 'review') throw error
       throw new Error(
         `${(error as Error).message}: item "${key}" is ${item.status}, so there is nothing to resolve. ${
-          item.status === 'failed' ? 'run_resume retries it.' : 'run_report shows the run status.'
+          item.status === 'failed'
+            ? `${runner.ledger.driver(runId) === 'host' ? 'host_next' : 'run_resume'} retries it.`
+            : 'run_report shows the run status.'
         }`,
       )
     }
@@ -748,12 +790,52 @@ tool(
   },
 )
 
+const host = new Host(runner.ledger, store)
+
+tool(
+  'host_start',
+  {
+    title: "Run a batch in the agent's own browser",
+    description:
+      'Runs an authorized item batch with an agent host. Browser actions require permission to execute page scripts; read-only evaluate in the current Codex app cannot run them. API-only and agent-tool batches need no browser. Returns {runId,batch,actions,note}, one tab per slot, parallel 1..4. Tools use existing MCP connections with frozen args. Commit journaled before dispatch, missing write results held for review, done keys skipped. No setup/teardown/iframe/press/extract in host mode; HTTP session:browser needs the browser runner. Follow host_next.',
+    inputSchema: {
+      workflow: z.string(),
+      params: z.record(z.string(), z.string()).default({}),
+      parallel: z.number().int().min(1).max(4).default(1),
+    },
+    annotations: { destructiveHint: true, openWorldHint: true },
+  },
+  async ({ workflow, params, parallel }) => text(await host.start(workflow, params, { parallel })),
+)
+
+tool(
+  'host_next',
+  {
+    title: 'Report a batch, get the next',
+    description:
+      'Records a numbered batch and returns the next actions or done:{status,counts,files}. Run actions once, in order. navigate opens url; run_js requires page-script execution and returns raw JSON; click is a real click on the shield; tool invokes that already connected server/tool with exact args and returns {actionId,result:<raw MCP result>}. results contains one result per run_js OR tool in action order, none for navigate/click. Echo batch. On error include completed (actions fully finished before it), error, and results so far. Missing write results become review. Never invent outcomes or execute a batch twice. Resume an interrupted host run with host_next(runId) and no results. Report problem rows with run_report; resolve review only after checking the destination.',
+    inputSchema: {
+      runId: z.string(),
+      batch: z.number().int().optional(),
+      results: z.array(z.unknown()).optional(),
+      error: z.string().optional(),
+      completed: z.number().int().min(0).optional(),
+    },
+    annotations: { destructiveHint: true, openWorldHint: true },
+  },
+  async ({ runId, ...input }) => {
+    known(runId)
+    return text(await host.next(runId, input))
+  },
+)
+
 let closing = false
 /** Disconnects from Chrome (left running for the next client) and exits, also when the client goes away. */
 const shutdown = () => {
   if (closing) return
   closing = true
-  browser.close().finally(() => {
+  network.clear()
+  Promise.allSettled([host.close(), browser.close()]).finally(() => {
     runner.ledger.db.close()
     process.exit(0)
   })

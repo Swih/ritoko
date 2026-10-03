@@ -6,13 +6,17 @@ import type { Browser } from './browser.ts'
 import { withDialogs } from './dialog.ts'
 import { bounded, download } from './download.ts'
 import { extract } from './extract.ts'
+import { runHttp, runMcp, VerificationError } from './integrations.ts'
 import { readItems } from './items.ts'
 import type { Cause, ItemRow, Ledger, Run } from './ledger.ts'
 import { resolve, SelectorError } from './locate.ts'
+import { McpClients } from './mcp-client.ts'
 import { paths } from './paths.ts'
 import { type Step, Target, Workflow } from './schema.ts'
-import { check, type Store } from './store.ts'
-import { references, render, renderSelector, type Scope } from './template.ts'
+import { check, type Store, secretVariables } from './store.ts'
+import { mask, references, render, renderSelector, type Scope, snapshotVars } from './template.ts'
+
+export { VerificationError }
 
 const MAX_CONSECUTIVE_FAILURES = 3
 
@@ -24,11 +28,13 @@ const timeOrigin = (page: Page) =>
     page.evaluate(() => performance.timeOrigin),
     'The page',
   )
-const mask = (text: string, scope: Scope) =>
-  (scope.secrets ?? []).reduce((masked, secret) => masked.replaceAll(secret, '***'), text)
+
+/** API-only workflows never open Chrome: it is for the steps that drive a page, or share its session. */
+const usesBrowser = (steps: Step[]) =>
+  steps.some((s) => (s.do !== 'http' && s.do !== 'mcp') || (s.do === 'http' && s.session === 'browser'))
 
 /** Real path of `file` (relative to `dir`), required to lie inside `dir`: item data cannot pick any local file. */
-async function confine(file: string, dir: string | undefined): Promise<string> {
+export async function confine(file: string, dir: string | undefined): Promise<string> {
   if (!dir) throw new Error('Upload paths from item data need an input file')
   const [root, actual] = await Promise.all([realpath(dir), realpath(absolute(dir, file))])
   const path = relative(root, actual)
@@ -37,10 +43,9 @@ async function confine(file: string, dir: string | undefined): Promise<string> {
   return actual
 }
 
-export class VerificationError extends Error {}
-
 export type Report = {
   runId: string
+  driver: 'host' | 'direct'
   workflow: string
   version: number
   status: Run['status']
@@ -77,6 +82,12 @@ export class Runner {
   #live = new Map<string, { page: Page; document: number }>()
   /** Selector index that last worked, per run and step: skips known-broken primaries. */
   #preferred = new Map<string, number>()
+  /** The MCP servers of the operation in progress, closed when it ends. */
+  #mcp: McpClients | undefined
+  /** Setup credentials survive a live browser pause in memory only. */
+  #setup = new Map<string, Pick<Scope, 'vars' | 'secrets' | 'secretVars'>>()
+  /** Credentials acquired by a submitted item survive only a pause on its same live document. */
+  #itemRuntime = new Map<string, Map<number, Pick<Scope, 'vars' | 'secrets' | 'secretVars'>>>()
 
   readonly browser: Pick<Browser, 'page'>
   readonly ledger: Ledger
@@ -106,11 +117,22 @@ export class Runner {
   async #start(name: string, params: Record<string, string>, repeat: boolean): Promise<Outcome> {
     const wf = await this.store.get(name)
     check(wf)
+    this.#direct(wf)
     const resolved = this.#params(wf, params)
     this.#secrets(wf)
     const scope = render(wf.items?.scope ?? '', { param: resolved, files: {}, item: {} })
     const run = this.ledger.createRun(wf.name, wf.version, resolved, repeat, wf, scope)
     return this.#execute(run.id)
+  }
+
+  #direct(wf: Workflow): void {
+    if (
+      [...wf.setup, ...wf.item, ...wf.teardown].some((step) => {
+        const server = step.do === 'mcp' ? wf.servers[step.server] : undefined
+        return server && 'ref' in server && server.ref === 'agent'
+      })
+    )
+      throw new Error('MCP ref: agent requires host mode; direct Runner cannot execute agent-managed tools')
   }
 
   /** Params journaled with the run: all but secrets, which come from the environment. */
@@ -147,12 +169,19 @@ export class Runner {
     return secrets
   }
 
-  #scope(wf: Workflow, params: Record<string, string>, files: Record<string, string>): Scope {
+  #scope(
+    wf: Workflow,
+    params: Record<string, string>,
+    files: Record<string, string>,
+    vars: Record<string, string> = {},
+  ): Scope {
     const secrets = this.#secrets(wf)
     return {
       param: { ...params, ...secrets },
       files: { ...files },
       item: {},
+      vars: { ...vars },
+      secretVars: secretVariables(wf),
       secrets: Object.values(secrets),
     }
   }
@@ -178,11 +207,14 @@ export class Runner {
       if (!note.trim()) throw new Error('Adoption needs a note describing the recorded submission')
       const wf = await this.store.get(name)
       check(wf)
+      this.#direct(wf)
       if (!wf.items || wf.readOnly) throw new Error('Adoption is for a recorded write-batch item')
       const resolved = this.#params(wf, params)
       const scope: Scope = { ...this.#scope(wf, resolved, {}), item: data }
       const key = render(wf.items.key, scope).trim()
       if (!key) throw new Error('Empty business key')
+      scope.key = key
+      scope.committed = true
       const identity = render(wf.items.scope, scope)
       if (this.ledger.barrier(wf.name, identity, key, ''))
         throw new Error('This key already has a journal entry; inspect or resolve that run instead')
@@ -191,12 +223,15 @@ export class Runner {
       this.ledger.updateRun(run.id, { phase: 'items' })
       this.ledger.updateItem(run.id, 0, { status: 'running', committed: true, attempts: 1 })
       this.ledger.event(run.id, 'adopt', { key, note })
+      const after = wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)
+      this.#mcp = new McpClients(wf.servers, scope)
       try {
-        const page = await this.browser.page()
-        for (const step of wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)) {
+        const page = usesBrowser(after) ? await this.browser.page() : undefined
+        for (const step of after) {
           this.ledger.updateItem(run.id, 0, { stepId: step.id })
           try {
             await this.#step(run.id, step, page, scope)
+            if ('save' in step && step.save) this.ledger.updateItem(run.id, 0, { vars: snapshotVars(scope) })
           } catch (error) {
             if (error instanceof SelectorError) {
               this.ledger.updateItem(run.id, 0, { status: 'paused', message: error.message })
@@ -218,8 +253,15 @@ export class Runner {
           message: mask((error as Error).message, scope),
         })
         return this.#finish(run.id, 'partial')
+      } finally {
+        await this.#closeServers()
       }
     })
+  }
+
+  async #closeServers(): Promise<void> {
+    await this.#mcp?.close()
+    this.#mcp = undefined
   }
 
   resume(runId: string): Promise<Outcome> {
@@ -231,6 +273,8 @@ export class Runner {
     return this.ledger.exclusive(async () => {
       this.ledger.cancel(runId)
       this.#live.delete(runId)
+      this.#setup.delete(runId)
+      this.#itemRuntime.delete(runId)
       return this.report(runId)
     })
   }
@@ -286,6 +330,7 @@ export class Runner {
     for (const i of items) counts[i.status] = (counts[i.status] ?? 0) + 1
     return {
       runId,
+      driver: this.ledger.driver(runId),
       workflow: run.workflow,
       version: run.version,
       status: run.status,
@@ -306,6 +351,10 @@ export class Runner {
   }
 
   async #execute(runId: string): Promise<Outcome> {
+    if (this.ledger.driver(runId) === 'host')
+      throw new Error(
+        `Run ${runId} uses the host agent: resume with host_next, not run_resume or CLI resume.`,
+      )
     if (this.ledger.cancelled(runId))
       throw new Error(`Run ${runId} was cancelled for good: start a new run instead of resuming it.`)
     let run = this.ledger.run(runId)
@@ -327,18 +376,30 @@ export class Runner {
     }
     const wf = await this.#definition(run)
     check(wf)
+    this.#direct(wf)
     // Before marking the run running: a missing secret variable leaves it as it was.
-    const scope = this.#scope(wf, run.params, run.files)
+    const scope = this.#scope(wf, run.params, run.files, run.vars)
+    const cached = this.#setup.get(runId)
+    if (cached) {
+      scope.vars = { ...scope.vars, ...cached.vars }
+      scope.secrets = [...(scope.secrets ?? []), ...(cached.secrets ?? [])]
+      scope.secretVars = [...(cached.secretVars ?? [])]
+    }
     this.ledger.updateRun(runId, { status: 'running', message: null })
+    this.#mcp = new McpClients(wf.servers, scope)
 
     try {
       // Validate file inputs before browser actions when they do not depend on setup downloads.
       if (wf.items && !run.itemsLoaded && !references(wf.items.from).some((r) => r.ns === 'files'))
         await this.#loadItems(run, wf, scope)
-      const page = await this.browser.page()
+      const page = usesBrowser([...wf.setup, ...wf.item, ...wf.teardown])
+        ? await this.browser.page()
+        : undefined
       const previous = this.#live.get(runId)
-      const live =
-        previous?.page === page && !page.isClosed() && previous.document === (await timeOrigin(page))
+      const live = Boolean(
+        page && previous?.page === page && !page.isClosed() && previous.document === (await timeOrigin(page)),
+      )
+      if (!live) this.#itemRuntime.delete(runId)
       const phase = run.phase
       // Recover setup before processing items. Final checks must preserve the completed page.
       if (run.phase === 'setup' || (!live && run.phase === 'items')) {
@@ -350,7 +411,12 @@ export class Runner {
       }
 
       if (run.phase === 'items') {
-        const pause = await this.#items(run, wf, page, scope, Boolean(live))
+        this.#setup.set(runId, {
+          vars: { ...scope.vars },
+          secrets: [...(scope.secrets ?? [])],
+          secretVars: [...(scope.secretVars ?? [])],
+        })
+        const pause = await this.#items(run, wf, page, scope, live)
         if (pause) return this.#pause(run, pause, page, scope)
         if (this.ledger.run(runId).status === 'stopped') return this.#finish(runId, 'stopped')
         if (this.ledger.items(runId).some((i) => !['done', 'skipped'].includes(i.status)))
@@ -368,11 +434,13 @@ export class Runner {
 
       const pause = await this.#phase(run, 'teardown', wf.teardown, live ? run.stepId : null, page, scope)
       if (pause) return this.#pause(run, pause, page, scope)
-      await page.screenshot({ path: join(this.#dir(runId), 'final.png') }).catch(() => {})
+      await page?.screenshot({ path: join(this.#dir(runId), 'final.png') }).catch(() => {})
       return this.#finish(runId, 'done')
     } catch (error) {
       this.ledger.updateRun(runId, { status: 'stopped', message: mask((error as Error).message, scope) })
       return this.#finish(runId, 'stopped')
+    } finally {
+      await this.#closeServers()
     }
   }
 
@@ -398,7 +466,7 @@ export class Runner {
     phase: 'setup' | 'teardown',
     steps: Step[],
     cursor: string | null,
-    page: Page,
+    page: Page | undefined,
     scope: Scope,
     persist = true,
   ) {
@@ -409,6 +477,8 @@ export class Runner {
       if (persist) this.ledger.updateRun(run.id, { phase, step: i, stepId: step.id })
       try {
         await this.#step(run.id, step, page, scope)
+        if (phase === 'setup' && 'save' in step && step.save)
+          this.ledger.updateRun(run.id, { vars: snapshotVars(scope) })
       } catch (error) {
         if (error instanceof SelectorError) {
           // Recovery setup must not overwrite the interrupted item cursor.
@@ -421,9 +491,17 @@ export class Runner {
     return undefined
   }
 
-  async #items(run: Run, wf: Workflow, page: Page, scope: Scope, live: boolean): Promise<Pause | undefined> {
+  async #items(
+    run: Run,
+    wf: Workflow,
+    page: Page | undefined,
+    scope: Scope,
+    live: boolean,
+  ): Promise<Pause | undefined> {
     let failures = 0
     if (wf.items) scope.inbox = dirname(this.#local(render(wf.items.from, scope)))
+    const shared = { ...scope.vars }
+    const sharedSecrets = [...(scope.secretVars ?? [])]
     // A paused submitted item resumes first, while the live page still shows its own document.
     const awaiting = (i: ItemRow) => i.status === 'paused' && i.committed
     const items = this.ledger.items(run.id).sort((a, b) => Number(awaiting(b)) - Number(awaiting(a)))
@@ -478,7 +556,16 @@ export class Runner {
         })
         continue
       }
-      update({ status: 'running', committed, attempts: item.attempts + 1, message: null, cause: null })
+      // An item replayed from its start forgets what an earlier attempt saved.
+      const vars = committed ? item.vars : {}
+      const runtime = committed && live ? this.#itemRuntime.get(run.id)?.get(item.idx) : undefined
+      scope.vars = { ...shared, ...vars, ...runtime?.vars }
+      scope.secretVars = [...new Set([...sharedSecrets, ...(runtime?.secretVars ?? [])])]
+      scope.secrets = [...new Set([...(scope.secrets ?? []), ...(runtime?.secrets ?? [])])]
+      this.#itemRuntime.get(run.id)?.delete(item.idx)
+      scope.committed = committed
+      scope.key = item.key
+      update({ status: 'running', committed, attempts: item.attempts + 1, message: null, cause: null, vars })
       for (let i = from; i < wf.item.length; i++) {
         const step = wf.item[i] as Step
         update({ step: i, stepId: step.id })
@@ -487,9 +574,17 @@ export class Runner {
           await this.#step(run.id, step, page, scope, () => {
             if (step.commit) {
               committed = true
+              scope.committed = true
               update({ committed: true })
             }
           })
+          if ('save' in step && step.save) {
+            for (const name of Object.keys(step.save)) {
+              const value = scope.vars?.[name]
+              if (value !== undefined) vars[name] = value
+            }
+            update({ vars: snapshotVars({ ...scope, vars }) })
+          }
         } catch (error) {
           // After commit, a missing target pauses for repair only on the run's first submitted item, once.
           // Elsewhere it means the site answered differently (e.g. an error page): review and continue.
@@ -497,6 +592,18 @@ export class Runner {
             !committed ||
             (!resumed && !this.ledger.items(run.id).some((i) => i.committed && i.idx !== item.idx))
           if (error instanceof SelectorError && repairable) {
+            if (committed) {
+              let cached = this.#itemRuntime.get(run.id)
+              if (!cached) {
+                cached = new Map()
+                this.#itemRuntime.set(run.id, cached)
+              }
+              cached.set(item.idx, {
+                vars: { ...scope.vars },
+                secrets: [...(scope.secrets ?? [])],
+                secretVars: [...(scope.secretVars ?? [])],
+              })
+            }
             update({
               status: 'paused',
               message: error.message,
@@ -532,16 +639,28 @@ export class Runner {
         }
       }
     }
+    scope.vars = shared
+    scope.secretVars = sharedSecrets
+    scope.item = {}
+    scope.key = undefined
+    scope.committed = this.ledger.items(run.id).some((item) => item.committed)
     return undefined
   }
 
-  async #step(runId: string, step: Step, page: Page, scope: Scope, beforeAction = () => {}): Promise<void> {
+  async #step(
+    runId: string,
+    step: Step,
+    page: Page | undefined,
+    scope: Scope,
+    beforeAction = () => {},
+  ): Promise<void> {
     const answer =
       'onDialog' in step
         ? { onDialog: step.onDialog, dialogText: step.dialogText && render(step.dialogText, scope) }
         : {}
     try {
-      await withDialogs(page, answer, () => this.#act(runId, step, page, scope, beforeAction))
+      const act = () => this.#act(runId, step, page, scope, beforeAction)
+      await (page ? withDialogs(page, answer, act) : act())
     } catch (error) {
       // Secret values never reach the journal, reports or the agent.
       if (error instanceof Error) error.message = mask(error.message, scope)
@@ -549,7 +668,38 @@ export class Runner {
     }
   }
 
-  async #act(runId: string, step: Step, page: Page, scope: Scope, beforeAction: () => void): Promise<void> {
+  /** An http or mcp step: Ritoko sends it itself. Its journal event holds no body and no secret. */
+  async #call(
+    runId: string,
+    step: Extract<Step, { do: 'http' | 'mcp' }>,
+    page: Page | undefined,
+    scope: Scope,
+    commit: () => void,
+  ): Promise<void> {
+    const { workflow, scope: destination, repeat } = this.ledger.run(runId)
+    const call = {
+      scope,
+      dir: this.#dir(runId),
+      commit,
+      identity: JSON.stringify([workflow, destination, scope.key ?? '', step.id, repeat ? runId : '']),
+      committed: scope.committed,
+      browser: page?.request,
+      mcp: this.#mcp as McpClients,
+    }
+    const { file, evidence } = await (step.do === 'http' ? runHttp(step, call) : runMcp(step, call))
+    if (file) this.#keep(runId, step.id, step.saveAs as string, scope, file)
+    this.ledger.event(runId, step.do, { item: scope.key, step: step.id, ...evidence })
+  }
+
+  async #act(
+    runId: string,
+    step: Step,
+    page: Page | undefined,
+    scope: Scope,
+    beforeAction: () => void,
+  ): Promise<void> {
+    if (step.do === 'http' || step.do === 'mcp') return this.#call(runId, step, page, scope, beforeAction)
+    if (!page) throw new Error(`Step "${step.id}" needs the browser`)
     const text = (s: string) => render(s, scope)
     const cacheKey = `${runId}:${step.id}`
     const locate = async (state: 'visible' | 'attached' = 'visible') => {
@@ -717,7 +867,8 @@ export class Runner {
     if (step.target && step.text === undefined && step.value === undefined) await locate()
   }
 
-  async #pause(run: Run, pause: Pause, page: Page, scope: Scope): Promise<Outcome> {
+  async #pause(run: Run, pause: Pause, page: Page | undefined, scope: Scope): Promise<Outcome> {
+    if (!page) throw new Error('Only a step that drives a page can pause for repair')
     this.ledger.updateRun(run.id, {
       status: 'paused',
       stepId: pause.stepId,
@@ -752,10 +903,13 @@ export class Runner {
       status = 'partial'
     this.ledger.updateRun(runId, { status })
     this.#live.delete(runId)
+    this.#setup.delete(runId)
+    this.#itemRuntime.delete(runId)
     return { status, report: this.report(runId) }
   }
 
-  async #shot(page: Page, runId: string, item: ItemRow, label: string): Promise<string | null> {
+  async #shot(page: Page | undefined, runId: string, item: ItemRow, label: string): Promise<string | null> {
+    if (!page) return null
     const file = join(this.#dir(runId), `item-${item.idx + 1}-${label}.png`)
     return page
       .screenshot({ path: file })

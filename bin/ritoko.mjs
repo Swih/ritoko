@@ -29,11 +29,11 @@ if (!ready) {
     '/usr/local/lib/node_modules/npm/bin/npm-cli.js',
   ]
   const npm = candidates.find(existsSync)
-  if (!npm) throw new Error(`Run npm install --omit=dev --ignore-scripts in ${root}, then retry Ritoko.`)
+  if (!npm) throw new Error(`Run npm ci --omit=dev --ignore-scripts in ${root}, then retry Ritoko.`)
   process.stderr.write('Ritoko: installing runtime dependencies once…\n')
   const result = spawnSync(
     process.execPath,
-    [npm, 'install', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
+    [npm, 'ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'],
     {
       cwd: root,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -43,7 +43,6 @@ if (!ready) {
   if (result.error || result.status !== 0)
     throw new Error(`Dependency installation failed: ${result.error?.message ?? result.stderr.toString()}`)
 }
-const source = join(root, 'src', 'cli.ts')
-const entry = existsSync(source) ? source : join(root, 'dist', 'cli.mjs')
+const entry = join(root, 'src', 'cli.ts')
 if (!existsSync(entry)) throw new Error('Ritoko entry point is missing. Reinstall the plugin.')
 await import(pathToFileURL(entry).href)

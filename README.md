@@ -88,7 +88,6 @@ pnpm install
 pnpm check   # biome + tsc
 pnpm test
 pnpm test:e2e # real Chrome, local server, isolated profiles and a killed CLI process
-pnpm build
 ```
 
 MIT © Swih

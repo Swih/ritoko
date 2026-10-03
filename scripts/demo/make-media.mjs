@@ -7,7 +7,7 @@
 // Terminal images show the CLI's real output; the only edits are (1) your temp RITOKO_HOME is printed as
 // ~/.ritoko with / separators, (2) the long `report` JSON has its middle items folded under an explicit marker,
 // (3) colors. Lines on an amber bar are annotations by this script, not CLI output.
-// Outputs: rpa-challenge-100.png, lab-batch.png(+webp), term-1..4 PNG, crash-resume-terminal.png(+webp),
+// Outputs: rpa-challenge-100.png, lab-batch.png(+webp), term-1..4 PNG, crash-resume-terminal.png,
 // demo.mp4, demo.webm, poster.png, facts.json. The demo runs in real time (no speed-up).
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -431,8 +431,7 @@ async function crashDemo() {
 
   // ---- video ----
   buildVideo(frames)
-  for (const f of ['lab-batch', 'crash-resume-terminal'])
-    ffmpeg(['-y', '-i', join(media, `${f}.png`), '-quality', '85', join(media, `${f}.webp`)])
+  ffmpeg(['-y', '-i', join(media, 'lab-batch.png'), '-quality', '85', join(media, 'lab-batch.webp')])
   await stage.close()
 }
 

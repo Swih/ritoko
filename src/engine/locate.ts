@@ -55,14 +55,18 @@ export async function resolve(
   const all = [target.primary, ...target.fallbacks]
   const root = within(page, target.frame)
   const order = [start, ...all.keys()].filter((i, pos, arr) => i < all.length && arr.indexOf(i) === pos)
-  for (const [attempt, index] of order.entries()) {
-    const locator = toLocator(root, all[index] as Selector)
-    try {
-      await locator.first().waitFor({ state, timeout: attempt === 0 ? timeout : 1_500 })
-    } catch {
-      continue
+  // A navigation under our feet (not a timeout) aborts the wait: retry once on the new document.
+  for (let pass = 0, interrupted = true; interrupted && pass < 2; pass++) {
+    interrupted = false
+    for (const [attempt, index] of order.entries()) {
+      const locator = toLocator(root, all[index] as Selector)
+      try {
+        await locator.first().waitFor({ state, timeout: attempt === 0 ? timeout : 1_500 })
+        if ((await locator.count()) === 1) return { locator, index }
+      } catch (error) {
+        if ((error as Error).name !== 'TimeoutError') interrupted = true
+      }
     }
-    if ((await locator.count()) === 1) return { locator, index }
   }
   throw new SelectorError(target)
 }

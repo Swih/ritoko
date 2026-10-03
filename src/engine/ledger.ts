@@ -10,7 +10,7 @@ export type RunStatus = 'running' | 'paused' | 'done' | 'partial' | 'stopped'
  * `paused` waits for a repair; `review` means the outcome is unknown and needs a human check.
  */
 export type ItemStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'review' | 'skipped'
-export type Cause = 'selector' | 'verification' | 'system' | 'interrupted' | 'duplicate'
+export type Cause = 'selector' | 'verification' | 'system' | 'interrupted' | 'duplicate' | 'cancelled'
 
 export type Run = {
   id: string
@@ -86,6 +86,9 @@ type ItemRecord = {
 }
 
 const now = () => new Date().toISOString()
+/** A lease holder refreshes its heartbeat this often; a lease silent for LEASE_EXPIRY_MS is abandoned. */
+const HEARTBEAT_MS = 5_000
+const LEASE_EXPIRY_MS = 60_000
 
 export function processAlive(pid: number): boolean {
   try {
@@ -137,6 +140,7 @@ export class Ledger {
           active_since: 'INTEGER',
         },
         items: { step_id: 'TEXT' },
+        leases: { heartbeat: 'INTEGER NOT NULL DEFAULT 0' },
       })) {
         const columns = this.db
           .prepare(`PRAGMA table_info(${table})`)
@@ -173,16 +177,22 @@ export class Ledger {
   async exclusive<T>(fn: () => Promise<T>, resource = 'execution'): Promise<T> {
     const owner = randomUUID()
     this.transaction(() => {
-      const held = this.db.prepare('SELECT pid FROM leases WHERE resource = ?').get(resource)
-      if (held && processAlive(Number(held.pid)))
+      const held = this.db.prepare('SELECT pid, heartbeat FROM leases WHERE resource = ?').get(resource)
+      // A recycled PID or a hung process stops the heartbeat even though the PID looks alive.
+      if (held && processAlive(Number(held.pid)) && Date.now() - Number(held.heartbeat) < LEASE_EXPIRY_MS)
         throw new Error(`Ritoko is busy (${resource}, process ${held.pid}). Wait for the active operation.`)
       this.db
-        .prepare('INSERT OR REPLACE INTO leases (resource, owner, pid) VALUES (?, ?, ?)')
-        .run(resource, owner, process.pid)
+        .prepare('INSERT OR REPLACE INTO leases (resource, owner, pid, heartbeat) VALUES (?, ?, ?, ?)')
+        .run(resource, owner, process.pid, Date.now())
     })
+    const beat = setInterval(() => {
+      this.db.prepare('UPDATE leases SET heartbeat = ? WHERE owner = ?').run(Date.now(), owner)
+    }, HEARTBEAT_MS)
+    beat.unref()
     try {
       return await fn()
     } finally {
+      clearInterval(beat)
       this.db.prepare('DELETE FROM leases WHERE resource = ? AND owner = ?').run(resource, owner)
     }
   }
@@ -282,9 +292,10 @@ export class Ledger {
 
   addItems(runId: string, items: { key: string; data: Record<string, string> }[]): void {
     if (items.some((i) => !i.key.trim())) throw new Error('Empty business key in input')
-    const duplicates = items.map((i) => i.key).filter((k, i, all) => all.indexOf(k) !== i)
-    if (duplicates.length)
-      throw new Error(`Duplicate item keys in input: ${[...new Set(duplicates)].join(', ')}`)
+    const seen = new Set<string>()
+    const duplicates = new Set<string>()
+    for (const { key } of items) (seen.has(key) ? duplicates : seen).add(key)
+    if (duplicates.size) throw new Error(`Duplicate item keys in input: ${[...duplicates].join(', ')}`)
     const insert = this.db.prepare(
       'INSERT INTO items (run_id, idx, key, data, updated_at) VALUES (?, ?, ?, ?, ?)',
     )
@@ -338,7 +349,11 @@ export class Ledger {
     return found && !found.uncertain ? found.runId : undefined
   }
 
-  /** Uncertain outcomes take precedence over completions, even when repeat is requested. */
+  /**
+   * Uncertain outcomes take precedence over completions, even when repeat is requested. Only completed,
+   * submitted or review items block a key: an item interrupted before its commit never reached the site.
+   * A run without scope sees every scope of the workflow, and a scoped run sees unscoped runs.
+   */
   barrier(
     workflow: string,
     scope: string,
@@ -348,9 +363,9 @@ export class Ledger {
     const row = this.db
       .prepare(
         `SELECT i.* FROM items i JOIN runs r ON r.id = i.run_id
-         WHERE r.workflow = ? AND (r.scope = ? OR r.scope = '' OR r.definition IS NULL) AND i.key = ? AND i.run_id != ?
-         AND (i.status = 'done' OR (COALESCE(i.cause, '') != 'duplicate'
-           AND (i.committed = 1 OR i.status IN ('review', 'running', 'paused'))))
+         WHERE r.workflow = ? AND (?2 = '' OR r.scope = ?2 OR r.scope = '' OR r.definition IS NULL)
+         AND i.key = ? AND i.run_id != ?
+         AND (i.status = 'done' OR (COALESCE(i.cause, '') != 'duplicate' AND (i.committed = 1 OR i.status = 'review')))
          ORDER BY CASE WHEN i.status = 'done' THEN 1 ELSE 0 END, i.updated_at DESC LIMIT 1`,
       )
       .get(workflow, scope, key, runId) as ItemRecord | undefined
@@ -385,7 +400,34 @@ export class Ledger {
         message: `Manually resolved: ${note}`,
       })
       this.event(runId, 'resolve', { key, status, note })
-      this.updateRun(runId, { status: 'partial', phase: 'items', stepId: null })
+      // A paused run keeps waiting for its repair; other runs finish items on resume.
+      if (this.run(runId).status !== 'paused')
+        this.updateRun(runId, { status: 'partial', phase: 'items', stepId: null })
+    })
+  }
+
+  /**
+   * Stops a run for good: items it never submitted become failed (cancelled), so other runs may process
+   * their keys; items possibly submitted are held for review.
+   */
+  cancel(runId: string): void {
+    if (this.run(runId).status === 'done') throw new Error('Run already done')
+    this.transaction(() => {
+      for (const item of this.items(runId))
+        if (['pending', 'running', 'paused'].includes(item.status))
+          this.updateItem(
+            runId,
+            item.idx,
+            item.committed
+              ? {
+                  status: 'review',
+                  cause: 'interrupted',
+                  message: 'Run cancelled after the commit step: check on the site whether it went through.',
+                }
+              : { status: 'failed', cause: 'cancelled', message: 'Run cancelled before submission' },
+          )
+      this.event(runId, 'cancel', {})
+      this.updateRun(runId, { status: 'stopped', stepId: null, message: 'Cancelled' })
     })
   }
 

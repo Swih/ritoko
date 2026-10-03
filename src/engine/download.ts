@@ -1,7 +1,31 @@
 import { randomUUID } from 'node:crypto'
-import { writeFile } from 'node:fs/promises'
+import { rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join, win32 } from 'node:path'
 import type { Download, Locator, Page } from 'playwright-core'
+
+const MAX_BYTES = 200 * 1024 * 1024
+const tooLarge = () => new Error(`Download exceeds the ${MAX_BYTES / 1024 / 1024} MB limit`)
+
+/** Percent-decoded file name; a malformed escape keeps the name as sent. */
+function decodeName(name: string): string {
+  try {
+    return decodeURIComponent(name)
+  } catch {
+    return name
+  }
+}
+
+/** Rejects when `promise` takes longer than `ms`: a page whose main thread is blocked never answers. */
+export function bounded<T>(promise: Promise<T>, what: string, ms = 10_000): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${what} got no answer within ${ms / 1000} s: the page may be frozen`)),
+      ms,
+    )
+  })
+  return Promise.race([promise, expiry]).finally(() => clearTimeout(timer))
+}
 
 /**
  * Downloads what `trigger` points to into `dir` and returns the saved path.
@@ -9,12 +33,15 @@ import type { Download, Locator, Page } from 'playwright-core'
  * (target="_blank"). Anything else goes through the browser download event, caught on any tab.
  */
 export async function download(page: Page, trigger: Locator, dir: string, saveAs?: string): Promise<string> {
-  const href = await trigger.evaluate((el) => {
-    const a = el.closest('a')
-    if (!a?.href || !/^https?:/.test(a.href)) return null
-    const target = new URL(a.href)
-    return target.origin + target.pathname === location.origin + location.pathname ? null : a.href
-  })
+  const href = await bounded(
+    trigger.evaluate((el) => {
+      const a = el.closest('a')
+      if (!a?.href || !/^https?:/.test(a.href)) return null
+      const target = new URL(a.href)
+      return target.origin + target.pathname === location.origin + location.pathname ? null : a.href
+    }),
+    'Download link',
+  )
 
   if (href) {
     const response = await page.request.get(href, { timeout: 60_000 })
@@ -23,12 +50,11 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
       const disposition = response
         .headers()
         ['content-disposition']?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)/i)?.[1]
-      const file = destination(
-        dir,
-        saveAs,
-        decodeURIComponent(disposition ?? basename(new URL(href).pathname)),
-      )
-      await writeFile(file, await response.body(), { flag: 'wx' })
+      const file = destination(dir, saveAs, decodeName(disposition ?? basename(new URL(href).pathname)))
+      if (Number(response.headers()['content-length'] ?? 0) > MAX_BYTES) throw tooLarge()
+      const body = await response.body()
+      if (body.length > MAX_BYTES) throw tooLarge()
+      await writeFile(file, body, { flag: 'wx' })
       return file
     } finally {
       await response.dispose()
@@ -40,6 +66,10 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
     const [event] = await Promise.all([waiting.promise, trigger.click()])
     const file = destination(dir, saveAs, event.suggestedFilename())
     await event.saveAs(file)
+    if ((await stat(file)).size > MAX_BYTES) {
+      await rm(file)
+      throw tooLarge()
+    }
     return file
   } finally {
     waiting.cancel()

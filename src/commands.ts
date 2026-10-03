@@ -15,6 +15,7 @@ const USAGE = `ritoko <command>
   resume <runId> [--headless]
   report [runId]                         latest run if omitted
   resolve <runId> <key> done|failed --note "site check"
+  cancel <runId>                         stop a run for good; unsubmitted items fail as cancelled
   browser-close                          close Ritoko's Chrome explicitly
 
 Workflows and runs live in ${paths.workflows} and ${paths.runs}.`
@@ -91,8 +92,8 @@ try {
       break
     case 'report': {
       const id = arg ?? runner.ledger.lastRun()?.id
-      if (!id) throw new Error('No run yet')
-      console.log(JSON.stringify(runner.report(id), null, 2))
+      if (id) console.log(JSON.stringify(runner.report(id), null, 2))
+      else console.log('No run recorded. Start one with: ritoko run <workflow>')
       break
     }
     case 'resolve': {
@@ -104,6 +105,10 @@ try {
     }
     case 'browser-close':
       await runner.ledger.exclusive(async () => browser.shutdown())
+      break
+    case 'cancel':
+      if (!arg) throw new Error('cancel needs a run id')
+      console.log(JSON.stringify(await runner.cancel(arg), null, 2))
       break
     default:
       console.log(USAGE)

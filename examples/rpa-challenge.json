@@ -139,6 +139,7 @@
     },
     {
       "id": "s13",
+      "note": "rpachallenge.com shows no per-row confirmation: this only checks the page survived the submission. Only the final score (s12) verifies the rows; a real site needs a check proving that row's result.",
       "do": "expect",
       "target": {
         "primary": {

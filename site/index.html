@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ritoko: record a browser task once, replay it for every row</title>
-  <meta name="description" content="Ritoko turns a web task your coding agent did once into a workflow that replays from Excel or CSV without a model, verifies each item, resumes after a crash and never submits the same row twice. For Claude Code and Codex CLI. MIT.">
+  <meta name="description" content="Ritoko turns a web task your coding agent did once into a workflow that replays from Excel or CSV without a model, verifies each item, resumes after a crash and never resubmits a row it journaled. For Claude Code and Codex CLI. MIT.">
   <link rel="canonical" href="https://ritoko.com/">
   <meta name="color-scheme" content="light dark">
   <meta name="theme-color" content="#f4f0e6" media="(prefers-color-scheme: light)">
@@ -22,7 +22,7 @@
   <meta property="og:image:alt" content="Ritoko: record once, replay forever, resume safely. A ledger of items marked done, review and skipped.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Ritoko: record a browser task once, replay it for every row">
-  <meta name="twitter:description" content="Replays without a model, journals every item, resumes after a crash, never submits the same row twice.">
+  <meta name="twitter:description" content="Replays without a model, journals every item, resumes after a crash, never resubmits a journaled row.">
   <meta name="twitter:image" content="https://ritoko.com/assets/og.png">
 
   <script type="application/ld+json">
@@ -33,7 +33,7 @@
     "url": "https://ritoko.com/",
     "description": "Plugin for Claude Code and Codex CLI that turns a browser task an agent did once into a workflow replayed without a model from Excel or CSV, journaled per item, resumable and protected against double submission.",
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Windows, macOS, Linux",
+    "operatingSystem": "Windows, Linux",
     "softwareVersion": "0.1.0",
     "softwareRequirements": "Node.js 24 or newer, Google Chrome",
     "license": "https://opensource.org/licenses/MIT",
@@ -106,7 +106,7 @@
         <div class="hero-copy">
           <p class="eyebrow"><span>v0.1</span><span>MIT</span><span>Claude Code + Codex CLI</span></p>
           <h1 id="hero-title">Do the browser task once.<br> <em>Replay it for every row.</em></h1>
-          <p class="lede">Ritoko turns a web task your coding agent solved once into a workflow that replays from your spreadsheet without a model, checks every item, survives a crash and never submits the same row twice.</p>
+          <p class="lede">Ritoko turns a web task your coding agent solved once into a workflow that replays from your spreadsheet without a model, checks every item, survives a crash and never resubmits a row it journaled: done rows are skipped, uncertain ones held for review.</p>
 
           <div class="installer" data-tabs>
             <div class="tabs" role="tablist" aria-label="Choose your agent">
@@ -123,7 +123,7 @@
             <div class="tab-panel" role="tabpanel" id="panel-hero-codex" aria-labelledby="tab-hero-codex" hidden>
               <div class="cmd">
                 <span class="prompt" aria-hidden="true">$</span>
-                <code>codex plugin marketplace add Swih/ritoko</code>
+                <code>codex plugin marketplace add Swih/ritoko &amp;&amp; codex plugin add ritoko@ritoko</code>
                 <button class="copy" type="button" data-copy>Copy</button>
               </div>
             </div>
@@ -361,7 +361,7 @@
 }</code></pre>
             <ul class="code-notes">
               <li><span class="note-tag">key</span> The business key. A row whose key is already done in this workflow is skipped.</li>
-              <li><span class="note-tag">xpath</span> The challenge shuffles fields and randomizes ids every round, so the target is anchored on the visible label, never on an id or a position.</li>
+              <li><span class="note-tag">xpath</span> The challenge shuffles fields and randomizes ids every round, so this target is anchored on the visible label rather than on an id or a position.</li>
               <li><span class="note-tag note-tag--commit">commit</span> The point of no return. An item interrupted after this step becomes review.</li>
               <li><span class="note-tag">expect</span> Proof on the page. An item is done only when its checks pass.</li>
             </ul>
@@ -372,12 +372,12 @@
           <h3 class="minor-title">Selector order of preference</h3>
           <ol class="ladder-list">
             <li><span>Role and accessible name</span></li>
-            <li><span>Label</span></li>
-            <li><span>Anchored visible text</span></li>
+            <li><span>Label or placeholder</span></li>
             <li><span>Test id</span></li>
-            <li><span>Relative CSS or XPath</span></li>
+            <li><span>Text anchored on a label, or visible text</span></li>
+            <li><span>Last resorts: name, id or position</span></li>
           </ol>
-          <p class="ladder-note">Never a generated id, an absolute XPath or a position. Each element gets a primary selector plus fallbacks, each verified unique when recorded.</p>
+          <p class="ladder-note">Ids, names and positions are used only when nothing readable is unique, and a bare positional path is flagged fragile for the agent to replace. Each element gets a primary selector plus fallbacks, each verified unique when recorded.</p>
         </div>
       </div>
     </section>
@@ -431,7 +431,7 @@
                 <th scope="row"><span class="chip chip--paused">paused</span></th>
                 <td>A selector stopped matching. The page is left open for repair.</td>
                 <td>Before commit: the form restarts in full. After commit: only verification resumes, on the same live page, or the item becomes review.</td>
-                <td>Held as review in any other run until this one is finished or resolved.</td>
+                <td>Paused after its commit: blocked in any other run until this one finishes or it is resolved. Before its commit: not blocked, nothing was sent.</td>
               </tr>
             </tbody>
           </table>
@@ -639,16 +639,21 @@
               <code>codex plugin marketplace add Swih/ritoko</code>
               <button class="copy" type="button" data-copy>Copy</button>
             </div>
-            <p class="small">Then select Ritoko in the plugin directory and restart Codex.</p>
+            <div class="cmd">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code>codex plugin add ritoko@ritoko</code>
+              <button class="copy" type="button" data-copy>Copy</button>
+            </div>
+            <p class="small">Restart Codex. The skill and the MCP server load with the plugin.</p>
           </div>
           <div class="install-card install-card--req">
             <h3>Requirements</h3>
             <ul class="rules rules--plain">
               <li><strong>Node.js 24</strong> or newer</li>
               <li><strong>Google Chrome</strong> (or set <code>RITOKO_CHROME_PATH</code>)</li>
-              <li>Windows, macOS or Linux</li>
+              <li>Tested on Windows 11; CI on Linux; macOS untested</li>
             </ul>
-            <p class="small">On first start the launcher installs its runtime dependencies once, with npm lifecycle scripts disabled.</p>
+            <p class="small">On first start the launcher installs its runtime dependencies once (about 6&nbsp;s, 43&nbsp;MB), with npm lifecycle scripts disabled and the exact versions of <code>package-lock.json</code>.</p>
           </div>
         </div>
 
@@ -681,7 +686,7 @@
           <details>
             <summary>What about logins and MFA?</summary>
             <div class="answer">
-              <p>Ritoko uses its own Chrome window with a dedicated profile, so logins persist between runs. When the agent meets a login, MFA prompt or CAPTCHA while recording, it asks you to complete it yourself in that window. The skill tells it never to type your passwords.</p>
+              <p>Ritoko uses its own Chrome window with a dedicated profile, so logins persist between runs. When the agent meets a login, MFA prompt or CAPTCHA while recording, it asks you to complete it yourself in that window. The skill tells it never to type your passwords. Ritoko does not detect logins itself: during a replay, a login page where the form was expected pauses the run for repair.</p>
             </div>
           </details>
           <details>
@@ -728,7 +733,7 @@
         </a>
         <p class="small">Reliable, resumable browser procedures for coding agents.</p>
       </div>
-      <p class="small scope">Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections, and it stops for logins and MFA so you complete them yourself.</p>
+      <p class="small scope">Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections; you complete logins and MFA yourself in its Chrome window.</p>
       <ul class="footer-links">
         <li><a href="https://github.com/Swih/ritoko" rel="noopener">GitHub</a></li>
         <li><a href="https://github.com/Swih/ritoko/blob/main/LICENSE" rel="noopener">MIT License</a></li>

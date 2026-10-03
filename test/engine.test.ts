@@ -3,7 +3,7 @@ import { cell, decode, parseCsv } from '../src/engine/items.ts'
 import { Ledger } from '../src/engine/ledger.ts'
 import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
 import { check } from '../src/engine/store.ts'
-import { render } from '../src/engine/template.ts'
+import { render, renderSelector } from '../src/engine/template.ts'
 
 const scope = {
   param: { month: '2026-09' },
@@ -19,6 +19,17 @@ describe('render', () => {
   })
   it('throws on unknown references', () => {
     expect(() => render('{{item.Email}}', scope)).toThrow('Unknown item.Email')
+    expect(() => render('{{item.toString}}', scope)).toThrow('Unknown item.toString')
+  })
+  it('quotes values inserted into selectors', () => {
+    const name = { ...scope, item: { Name: `O'Brien "Bob"`, Row: '2' } }
+    expect(renderSelector("//td[.='{{item.Name}}']/..//tr[{{item.Row}}]", name, 'xpath')).toBe(
+      `//td[.=concat('', concat('O', "'", 'Brien "Bob"'), '')]/..//tr[2]`,
+    )
+    expect(() => renderSelector('//tr[{{item.Name}}]', name, 'xpath')).toThrow('inside quotes')
+    expect(renderSelector('[title="{{item.Name}}"] #x{{item.Row}}', name, 'css')).toBe(
+      `[title="O\\'Brien \\"Bob\\""] #x2`,
+    )
   })
 })
 
@@ -28,6 +39,13 @@ describe('parseCsv', () => {
       ['a', 'b'],
       ['x;1', 'say "hi"'],
     ])
+  })
+  it('picks the separator splitting every record alike', () => {
+    expect(parseCsv('Name;City, State\nAda;Paris, France\n')).toEqual([
+      ['Name', 'City, State'],
+      ['Ada', 'Paris, France'],
+    ])
+    expect(parseCsv('Name,Note\nAda,a;b\nBob,c\n')[1]).toEqual(['Ada', 'a;b'])
   })
 })
 
@@ -79,6 +97,37 @@ describe('check', () => {
     expect(() => check(wf({ items: { from: '{{files.x.xlsx}}', key: '{{item.Email}}' } }))).toThrow(
       'not downloaded',
     )
+  })
+  it('rejects inherited names, unknown dialog params and incomplete secrets', () => {
+    expect(() => check(wf({ setup: [{ id: 'go', do: 'goto', url: '{{param.constructor}}' }] }))).toThrow(
+      'unknown param',
+    )
+    expect(() =>
+      check(
+        wf({
+          setup: [
+            {
+              id: 'confirm',
+              do: 'click',
+              target: { primary: { by: 'role', role: 'button', name: 'OK' } },
+              onDialog: 'accept',
+              dialogText: '{{param.nope}}',
+            },
+          ],
+        }),
+      ),
+    ).toThrow('unknown param')
+    expect(() => check(wf({ params: { input: {}, pin: { secret: true } } }))).toThrow('secret')
+  })
+  it('accepts a select that submits as the commit', () => {
+    const select = {
+      id: 'pick',
+      do: 'select' as const,
+      target: { primary: { by: 'label' as const, text: 'Plan' } },
+      value: 'Pro',
+      commit: true,
+    }
+    expect(check(wf({ item: [select, { id: 'ok', do: 'expect', text: 'Thanks' }] }))).toEqual([])
   })
   it('refuses a write batch without a commit or verification', () => {
     expect(() =>

@@ -1,10 +1,10 @@
 import { mkdirSync } from 'node:fs'
-import { access } from 'node:fs/promises'
-import { join } from 'node:path'
+import { access, realpath } from 'node:fs/promises'
+import { resolve as absolute, dirname, isAbsolute, join, relative, sep } from 'node:path'
 import type { Locator, Page } from 'playwright-core'
 import type { Browser } from './browser.ts'
 import { withDialogs } from './dialog.ts'
-import { download } from './download.ts'
+import { bounded, download } from './download.ts'
 import { extract } from './extract.ts'
 import { readItems } from './items.ts'
 import type { Cause, ItemRow, Ledger, Run } from './ledger.ts'
@@ -12,13 +12,30 @@ import { resolve, SelectorError } from './locate.ts'
 import { paths } from './paths.ts'
 import { type Step, Target, Workflow } from './schema.ts'
 import { check, type Store } from './store.ts'
-import { references, render, type Scope } from './template.ts'
+import { references, render, renderSelector, type Scope } from './template.ts'
 
 const MAX_CONSECUTIVE_FAILURES = 3
 
 /** Value of an input, textarea or select, or the text of a contenteditable field. */
 const fieldValue = (field: Locator) => field.inputValue().catch(() => field.innerText())
 const normalize = (s: string) => s.replace(/\s+/g, ' ')
+const timeOrigin = (page: Page) =>
+  bounded(
+    page.evaluate(() => performance.timeOrigin),
+    'The page',
+  )
+const mask = (text: string, scope: Scope) =>
+  (scope.secrets ?? []).reduce((masked, secret) => masked.replaceAll(secret, '***'), text)
+
+/** Real path of `file` (relative to `dir`), required to lie inside `dir`: item data cannot pick any local file. */
+async function confine(file: string, dir: string | undefined): Promise<string> {
+  if (!dir) throw new Error('Upload paths from item data need an input file')
+  const [root, actual] = await Promise.all([realpath(dir), realpath(absolute(dir, file))])
+  const path = relative(root, actual)
+  if (!path || path === '..' || path.startsWith(`..${sep}`) || isAbsolute(path))
+    throw new Error(`Upload paths from item data must stay inside ${root}, the folder of the input file`)
+  return actual
+}
 
 export class VerificationError extends Error {}
 
@@ -65,12 +82,21 @@ export class Runner {
   readonly ledger: Ledger
   readonly store: Store
   readonly runsDir: string
+  /** Refuse relative local paths (MCP server: its working directory means nothing to the agent). */
+  readonly absolutePaths: boolean
 
-  constructor(browser: Pick<Browser, 'page'>, ledger: Ledger, store: Store, runsDir = paths.runs) {
+  constructor(
+    browser: Pick<Browser, 'page'>,
+    ledger: Ledger,
+    store: Store,
+    runsDir = paths.runs,
+    { absolutePaths = false } = {},
+  ) {
     this.browser = browser
     this.ledger = ledger
     this.store = store
     this.runsDir = runsDir
+    this.absolutePaths = absolutePaths
   }
 
   async start(name: string, params: Record<string, string> = {}, { repeat = false } = {}): Promise<Outcome> {
@@ -81,22 +107,64 @@ export class Runner {
     const wf = await this.store.get(name)
     check(wf)
     const resolved = this.#params(wf, params)
+    this.#secrets(wf)
     const scope = render(wf.items?.scope ?? '', { param: resolved, files: {}, item: {} })
     const run = this.ledger.createRun(wf.name, wf.version, resolved, repeat, wf, scope)
     return this.#execute(run.id)
   }
 
+  /** Params journaled with the run: all but secrets, which come from the environment. */
   #params(wf: Workflow, params: Record<string, string>): Record<string, string> {
     const resolved: Record<string, string> = {}
     for (const [key, spec] of Object.entries(wf.params)) {
-      const value = params[key] ?? spec.default
+      if (spec.secret) {
+        if (Object.hasOwn(params, key))
+          throw new Error(
+            `Param "${key}" is secret: set environment variable ${spec.env} instead of passing it`,
+          )
+        continue
+      }
+      const value = (Object.hasOwn(params, key) ? params[key] : undefined) ?? spec.default
       if (spec.required && (value === undefined || !value.trim()))
         throw new Error(`Missing param "${key}"${spec.description ? `: ${spec.description}` : ''}`)
       if (value !== undefined) resolved[key] = value
     }
-    const unknown = Object.keys(params).filter((k) => !(k in wf.params))
+    const unknown = Object.keys(params).filter((k) => !Object.hasOwn(wf.params, k))
     if (unknown.length) throw new Error(`Unknown params: ${unknown.join(', ')}`)
     return resolved
+  }
+
+  /** Secret params, read from their environment variables on every start, resume and adoption. */
+  #secrets(wf: Workflow): Record<string, string> {
+    const secrets: Record<string, string> = {}
+    for (const [key, spec] of Object.entries(wf.params)) {
+      if (!spec.secret || !spec.env) continue
+      const value = process.env[spec.env]
+      if (value) secrets[key] = value
+      else if (spec.required)
+        throw new Error(`Set environment variable ${spec.env} for secret param "${key}"`)
+    }
+    return secrets
+  }
+
+  #scope(wf: Workflow, params: Record<string, string>, files: Record<string, string>): Scope {
+    const secrets = this.#secrets(wf)
+    return {
+      param: { ...params, ...secrets },
+      files: { ...files },
+      item: {},
+      secrets: Object.values(secrets),
+    }
+  }
+
+  /** A local file path: relative paths resolve against the working directory, unless absolute ones are required. */
+  #local(path: string): string {
+    if (isAbsolute(path)) return path
+    if (this.absolutePaths)
+      throw new Error(
+        `"${path}" is a relative path: pass an absolute one (here it would mean ${absolute(path)})`,
+      )
+    return absolute(path)
   }
 
   /** Journal the first real recorded submission by running only its confirmation steps. */
@@ -112,7 +180,7 @@ export class Runner {
       check(wf)
       if (!wf.items || wf.readOnly) throw new Error('Adoption is for a recorded write-batch item')
       const resolved = this.#params(wf, params)
-      const scope: Scope = { param: resolved, files: {}, item: data }
+      const scope: Scope = { ...this.#scope(wf, resolved, {}), item: data }
       const key = render(wf.items.key, scope).trim()
       if (!key) throw new Error('Empty business key')
       const identity = render(wf.items.scope, scope)
@@ -132,7 +200,7 @@ export class Runner {
           } catch (error) {
             if (error instanceof SelectorError) {
               this.ledger.updateItem(run.id, 0, { status: 'paused', message: error.message })
-              return this.#pause(run, { stepId: step.id, error }, page)
+              return this.#pause(run, { stepId: step.id, error }, page, scope)
             }
             throw error
           }
@@ -147,7 +215,7 @@ export class Runner {
         this.ledger.updateItem(run.id, 0, {
           status: 'review',
           cause: 'verification',
-          message: (error as Error).message,
+          message: mask((error as Error).message, scope),
         })
         return this.#finish(run.id, 'partial')
       }
@@ -156,6 +224,15 @@ export class Runner {
 
   resume(runId: string): Promise<Outcome> {
     return this.ledger.exclusive(async () => this.#execute(runId))
+  }
+
+  /** Stops a run for good: unsubmitted items fail as cancelled, freeing their keys; submitted ones go to review. */
+  cancel(runId: string): Promise<Report> {
+    return this.ledger.exclusive(async () => {
+      this.ledger.cancel(runId)
+      this.#live.delete(runId)
+      return this.report(runId)
+    })
   }
 
   resolve(runId: string, key: string, status: 'done' | 'failed', note: string): Promise<Report> {
@@ -248,8 +325,9 @@ export class Runner {
     }
     const wf = await this.#definition(run)
     check(wf)
+    // Before marking the run running: a missing secret variable leaves it as it was.
+    const scope = this.#scope(wf, run.params, run.files)
     this.ledger.updateRun(runId, { status: 'running', message: null })
-    const scope: Scope = { param: run.params, files: { ...run.files }, item: {} }
 
     try {
       // Validate file inputs before browser actions when they do not depend on setup downloads.
@@ -258,14 +336,12 @@ export class Runner {
       const page = await this.browser.page()
       const previous = this.#live.get(runId)
       const live =
-        previous?.page === page &&
-        !page.isClosed() &&
-        previous.document === (await page.evaluate(() => performance.timeOrigin))
+        previous?.page === page && !page.isClosed() && previous.document === (await timeOrigin(page))
       const phase = run.phase
       // Recover setup before processing items. Final checks must preserve the completed page.
       if (run.phase === 'setup' || (!live && run.phase === 'items')) {
         const pause = await this.#phase(run, 'setup', wf.setup, null, page, scope, phase === 'setup')
-        if (pause) return this.#pause(run, pause, page)
+        if (pause) return this.#pause(run, pause, page, scope)
         if (wf.items && !this.ledger.run(runId).itemsLoaded) await this.#loadItems(run, wf, scope)
         if (phase === 'setup') this.ledger.updateRun(runId, { phase: 'items', step: 0, stepId: null })
         run = this.ledger.run(runId)
@@ -273,7 +349,7 @@ export class Runner {
 
       if (run.phase === 'items') {
         const pause = await this.#items(run, wf, page, scope, Boolean(live))
-        if (pause) return this.#pause(run, pause, page)
+        if (pause) return this.#pause(run, pause, page, scope)
         if (this.ledger.run(runId).status === 'stopped') return this.#finish(runId, 'stopped')
         if (this.ledger.items(runId).some((i) => !['done', 'skipped'].includes(i.status)))
           return this.#finish(runId, 'partial')
@@ -282,25 +358,27 @@ export class Runner {
       }
 
       const pause = await this.#phase(run, 'teardown', wf.teardown, live ? run.stepId : null, page, scope)
-      if (pause) return this.#pause(run, pause, page)
+      if (pause) return this.#pause(run, pause, page, scope)
       await page.screenshot({ path: join(this.#dir(runId), 'final.png') }).catch(() => {})
       return this.#finish(runId, 'done')
     } catch (error) {
-      this.ledger.updateRun(runId, { status: 'stopped', message: (error as Error).message })
+      this.ledger.updateRun(runId, { status: 'stopped', message: mask((error as Error).message, scope) })
       return this.#finish(runId, 'stopped')
     }
   }
 
   async #loadItems(run: Run, wf: Workflow, scope: Scope): Promise<void> {
     if (!wf.items) return
-    const rows = await readItems(render(wf.items.from, scope), wf.items.sheet)
+    const rows = await readItems(this.#local(render(wf.items.from, scope)), wf.items.sheet)
     if (!rows.length) throw new Error('Input batch is empty')
     const referenced = new Set(wf.items.required)
     for (const r of references(JSON.stringify(wf.item))) if (r.ns === 'item') referenced.add(r.key)
     const items = rows.map((data, index) => {
       for (const column of referenced)
-        if (!(column in data) || !data[column]?.trim())
-          throw new Error(`Input row ${index + 1}: missing required column/value "${column}"`)
+        if (!Object.hasOwn(data, column) || !data[column]?.trim())
+          throw new Error(
+            `Input row ${index + 1}: missing required column/value "${column}" (an Excel formula with an error or without a saved result also reads as empty)`,
+          )
       return { key: render(wf.items?.key ?? '', { ...scope, item: data }).trim(), data }
     })
     this.ledger.addItems(run.id, items)
@@ -336,7 +414,11 @@ export class Runner {
 
   async #items(run: Run, wf: Workflow, page: Page, scope: Scope, live: boolean): Promise<Pause | undefined> {
     let failures = 0
-    for (const item of this.ledger.items(run.id)) {
+    if (wf.items) scope.inbox = dirname(this.#local(render(wf.items.from, scope)))
+    // A paused submitted item resumes first, while the live page still shows its own document.
+    const awaiting = (i: ItemRow) => i.status === 'paused' && i.committed
+    const items = this.ledger.items(run.id).sort((a, b) => Number(awaiting(b)) - Number(awaiting(a)))
+    for (const item of items) {
       if (['done', 'skipped'].includes(item.status)) continue
       if (item.status === 'review' && item.cause !== 'duplicate') continue
       const update = (patch: Parameters<Ledger['updateItem']>[2]) =>
@@ -445,9 +527,17 @@ export class Runner {
   }
 
   async #step(runId: string, step: Step, page: Page, scope: Scope, beforeAction = () => {}): Promise<void> {
-    await withDialogs(page, 'onDialog' in step ? step : {}, () =>
-      this.#act(runId, step, page, scope, beforeAction),
-    )
+    const answer =
+      'onDialog' in step
+        ? { onDialog: step.onDialog, dialogText: step.dialogText && render(step.dialogText, scope) }
+        : {}
+    try {
+      await withDialogs(page, answer, () => this.#act(runId, step, page, scope, beforeAction))
+    } catch (error) {
+      // Secret values never reach the journal, reports or the agent.
+      if (error instanceof Error) error.message = mask(error.message, scope)
+      throw error
+    }
   }
 
   async #act(runId: string, step: Step, page: Page, scope: Scope, beforeAction: () => void): Promise<void> {
@@ -455,9 +545,16 @@ export class Runner {
     const cacheKey = `${runId}:${step.id}`
     const locate = async (state: 'visible' | 'attached' = 'visible') => {
       if (!('target' in step) || !step.target) throw new Error(`Step "${step.id}" needs a target`)
+      // Values inserted into CSS or XPath are quoted for that language.
       const target = Target.parse(
-        JSON.parse(JSON.stringify(step.target), (_key, value) =>
-          typeof value === 'string' ? text(value) : value,
+        JSON.parse(JSON.stringify(step.target), (key, value) =>
+          typeof value !== 'string'
+            ? value
+            : key === 'css' || key === 'frame'
+              ? renderSelector(value, scope, 'css')
+              : key === 'xpath'
+                ? renderSelector(value, scope, 'xpath')
+                : text(value),
         ),
       )
       const { locator, index } = await resolve(page, target, {
@@ -470,9 +567,13 @@ export class Runner {
     }
 
     switch (step.do) {
-      case 'goto':
-        await page.goto(text(step.url))
+      case 'goto': {
+        const url = text(step.url)
+        if (!/^(https?:\/\/|about:blank$)/i.test(url))
+          throw new Error(`goto only opens http(s) URLs, not "${url}"`)
+        await page.goto(url)
         return
+      }
       case 'click': {
         const element = await locate()
         const timeout = step.timeoutMs ?? 10_000
@@ -493,12 +594,20 @@ export class Runner {
           throw new VerificationError(`Field did not keep the filled value (${step.id})`)
         return
       }
-      case 'select':
-        await (await locate()).selectOption(text(step.value))
+      case 'select': {
+        const field = await locate()
+        beforeAction()
+        await field.selectOption(text(step.value))
         return
-      case 'check':
-        await (await locate()).setChecked(step.checked)
+      }
+      case 'check': {
+        const box = await locate()
+        const timeout = step.timeoutMs ?? 10_000
+        await box.setChecked(step.checked, { trial: true, timeout })
+        beforeAction()
+        await box.setChecked(step.checked, { timeout })
         return
+      }
       case 'press': {
         const element = step.target ? await locate() : undefined
         // Focus first so that a failure to reach the target happens before the commit point.
@@ -508,7 +617,9 @@ export class Runner {
         return
       }
       case 'upload': {
-        const file = text(step.file)
+        const file = references(step.file).some((r) => r.ns === 'item')
+          ? await confine(text(step.file), scope.inbox)
+          : this.#local(text(step.file))
         await access(file)
         const field = await locate('attached')
         beforeAction()
@@ -583,7 +694,7 @@ export class Runner {
     if (step.target && step.text === undefined && step.value === undefined) await locate()
   }
 
-  async #pause(run: Run, pause: Pause, page: Page): Promise<Outcome> {
+  async #pause(run: Run, pause: Pause, page: Page, scope: Scope): Promise<Outcome> {
     this.ledger.updateRun(run.id, {
       status: 'paused',
       stepId: pause.stepId,
@@ -593,7 +704,7 @@ export class Runner {
     else
       this.#live.set(run.id, {
         page,
-        document: await page.evaluate(() => performance.timeOrigin).catch(() => -1),
+        document: await timeOrigin(page).catch(() => -1),
       })
     const item = this.ledger.items(run.id).find((i) => i.status === 'paused')
     return {
@@ -603,9 +714,12 @@ export class Runner {
       stepId: pause.stepId,
       itemKey: item?.key,
       error: pause.error.message,
-      snapshot: await page
-        .ariaSnapshot({ mode: 'ai' })
-        .catch(() => 'Page unavailable; reopen the browser before resuming.'),
+      snapshot: mask(
+        await page
+          .ariaSnapshot({ mode: 'ai' })
+          .catch(() => 'Page unavailable; reopen the browser before resuming.'),
+        scope,
+      ),
       report: this.report(run.id),
     }
   }

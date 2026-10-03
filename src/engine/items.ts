@@ -15,12 +15,15 @@ export async function readItems(path: string, sheet?: string | number): Promise<
   const [header, ...body] = rows
   if (!header) return []
   const keys = header.map((h) => cell(h).trim())
+  // Excel exports may end each line with a separator: drop trailing columns without header or data.
+  while (keys.length && !keys.at(-1) && body.every((row) => cell(row[keys.length - 1]) === '')) keys.pop()
   if (keys.some((key) => !key)) throw new Error('Input contains an empty column header')
   if (new Set(keys).size !== keys.length) throw new Error('Input contains duplicate column headers')
   return body
     .filter((row) => row.some((c) => cell(c) !== ''))
     .map((row, index) => {
-      if (row.length > keys.length) throw new Error(`Input row ${index + 1} has more cells than headers`)
+      if (row.slice(keys.length).some((c) => cell(c) !== ''))
+        throw new Error(`Input row ${index + 1} has more cells than headers`)
       return Object.fromEntries(keys.map((k, i) => [k, cell(row[i])]))
     })
 }
@@ -46,19 +49,42 @@ export function decode(bytes: Uint8Array): string {
   }
 }
 
-/** RFC 4180 CSV; auto-detects "," or ";" from the first line. */
+/**
+ * "," or ";": the one found as many times (outside quotes) in each of the first records, the semicolon on
+ * a tie since commas also occur in text and decimals; otherwise the most frequent.
+ */
+function separator(src: string): ',' | ';' {
+  const lines: Record<',' | ';', number>[] = []
+  let line = { ',': 0, ';': 0 }
+  let filled = false
+  let quoted = false
+  for (const ch of src) {
+    if (ch === '"') quoted = !quoted
+    if (quoted || ch === '\r') continue
+    if (ch === '\n') {
+      if (filled) lines.push(line)
+      if (lines.length === 5) break
+      line = { ',': 0, ';': 0 }
+      filled = false
+      continue
+    }
+    filled = true
+    if (ch === ',' || ch === ';') line[ch]++
+  }
+  if (filled && lines.length < 5) lines.push(line)
+  const steady = (s: ',' | ';') => {
+    const first = lines[0]?.[s] ?? 0
+    return lines.every((l) => l[s] === first) ? first : 0
+  }
+  if (steady(',') || steady(';')) return steady(';') >= steady(',') ? ';' : ','
+  const total = (s: ',' | ';') => lines.reduce((n, l) => n + l[s], 0)
+  return total(';') > total(',') ? ';' : ','
+}
+
+/** RFC 4180 CSV, separated by "," or ";". */
 export function parseCsv(text: string): string[][] {
   const src = text.replace(/^﻿/, '')
-  let headerQuoted = false
-  let commas = 0
-  let semicolons = 0
-  for (const ch of src) {
-    if (ch === '"') headerQuoted = !headerQuoted
-    if (!headerQuoted && (ch === '\n' || ch === '\r')) break
-    if (!headerQuoted && ch === ',') commas++
-    if (!headerQuoted && ch === ';') semicolons++
-  }
-  const sep = semicolons > commas ? ';' : ','
+  const sep = separator(src)
   const rows: string[][] = []
   let row: string[] = []
   let field = ''

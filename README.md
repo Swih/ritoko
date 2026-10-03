@@ -6,7 +6,7 @@ Works with **Claude Code** and **Codex CLI** (plugin = skill + local MCP server)
 
 ## How it works
 
-1. **Record.** Your agent does the task once in Ritoko's Chrome window. Ritoko computes robust selectors for each action (role, label, visible text — verified unique, with fallbacks) instead of brittle ids or positions.
+1. **Record.** Your agent does the task once in Ritoko's Chrome window. Ritoko computes selectors for each action, each verified to match only that element, best first: role and accessible name, label, placeholder, test id, an XPath anchored on a nearby label, visible text. Only when none of these is unique does it fall back to adjacent text, a `name` or `id` attribute, or the position inside a uniquely identified container; a bare positional CSS path is the last resort and is flagged `fragile` for the agent to replace.
 2. **Save.** The agent turns the recording into a workflow: parameters, a batch source (Excel/CSV), a business key per item, a `commit` step, and `expect` checks.
 3. **Replay.** Ritoko executes without a model and journals every item in SQLite. Each run keeps its workflow definition and input rows.
 4. **Repair.** If a selector changed, the run pauses with the page left open. Before submission, the form restarts in full. After submission, only verification resumes on the same document; otherwise the item is held for review. A missing verification target pauses only the run's first submitted item, once. Any other miss after submission, or expected text absent from the page (such as an error page), holds the item for review and the batch continues.
@@ -22,20 +22,23 @@ A run is `done` only when all items are confirmed or skipped and its final check
 
 ## Install
 
-For the current local checkout (Node 24+ and Google Chrome required), Claude Code:
+Requires Node 24+ and Google Chrome. Claude Code:
 
 ```bash
-claude plugin marketplace add .
+claude plugin marketplace add Swih/ritoko
 claude plugin install ritoko@ritoko
 ```
 
 Codex CLI:
 
 ```bash
-codex plugin marketplace add .
+codex plugin marketplace add Swih/ritoko
+codex plugin add ritoko@ritoko
 ```
 
-Select Ritoko in the plugin directory. Restart the client after updating its installed copy. The plugin uses a Node launcher, with no npx process or dependency on a published npm release. If runtime dependencies are missing, the launcher installs them once using npm with lifecycle scripts disabled.
+Restart the client after installing or updating. The plugin uses a Node launcher, with no npx process or published npm release. On first start it installs its runtime dependencies once (about 6 s and 43 MB), with npm lifecycle scripts disabled and the exact versions pinned in `package-lock.json`. To try a local checkout, use `.` instead of `Swih/ritoko`.
+
+Tested on Windows 11; CI also runs the tests on Linux. macOS is untested.
 
 `run_start` returns when the whole batch is done and sends MCP progress notifications meanwhile. Codex stops a tool call after 60 s by default: for long batches, add `tool_timeout_sec = 1800` under `[plugins."ritoko@ritoko".mcp_servers.ritoko]` in `~/.codex/config.toml`.
 
@@ -46,6 +49,7 @@ Ask your agent:
 - "Record this task with Ritoko: download the September report from …"
 - "Rerun the `supplier-onboarding` workflow with `suppliers.csv`"
 - "Resume my last Ritoko run"
+- "How did the last run go?"
 
 Or from a terminal, without any agent:
 
@@ -55,23 +59,27 @@ node bin/ritoko.mjs run rpa-challenge --repeat
 node bin/ritoko.mjs report
 node bin/ritoko.mjs resume <runId>
 node bin/ritoko.mjs resolve <runId> <key> done --note "Matched the record on the site"
+node bin/ritoko.mjs cancel <runId>
 node bin/ritoko.mjs browser-close
 ```
 
-Workflows, runs and the browser profile live in `~/.ritoko` (override with `RITOKO_HOME`). Chrome uses a dedicated profile and a local CDP endpoint shared by CLI and MCP. Exiting a client disconnects it and leaves Chrome available; `browser-close` closes it explicitly. Chrome reopens with its previous session ("continue where you left off"), so logins persist, session cookies included; Ritoko then keeps a single working tab. Chrome writes cookies to disk within about 30 seconds: a login is lost if Chrome is killed right after it, rather than closed. Set `RITOKO_CHROME_PATH` for a nonstandard executable.
+Workflows, runs and the browser profile live in `~/.ritoko` (override with `RITOKO_HOME`), created readable by your user only. Chrome uses a dedicated profile and a local CDP endpoint shared by CLI and MCP. Exiting a client disconnects it and leaves Chrome running, so logins and page state persist for the next client; `browser-close` closes it explicitly. Chrome reopens with its previous session ("continue where you left off"), so logins persist, session cookies included; Ritoko then keeps a single working tab. Chrome writes cookies to disk within about 30 seconds: a login is lost if Chrome is killed right after it, rather than closed. Set `RITOKO_CHROME_PATH` for a nonstandard executable.
+
+**Trust boundary.** While Ritoko's Chrome is open, its CDP endpoint on 127.0.0.1 is unauthenticated: any local process running as your user can drive that Chrome and read the cookies of the Ritoko profile. That is the same trust level as your user account, but on a shared or untrusted machine run `ritoko browser-close` when you are done, and do not sign the Ritoko profile in to accounts that other local software must not reach.
 
 ## Safe workflow contract
 
-- Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press or file upload that auto-submits may be the commit. Only verification, waiting, receipt downloads and extracts may follow it. Declare `readOnly: true` for read-only batches.
+- Use one irreversible commit per write item, followed by an expect proving that specific item's result. A click, key press, file upload, select or checkbox that auto-submits may be the commit. Only verification, waiting, receipt downloads and extracts may follow it. Declare `readOnly: true` for read-only batches.
 - JS alert/confirm/prompt dialogs are never answered silently. Set `onDialog` (`accept` or `dismiss`, plus `dialogText` for a prompt) on the click or press that opens one; any other dialog is dismissed and fails its step.
 - `extract` (read-only) saves a `<table>` or ARIA table/grid as UTF-8 CSV in the run directory, usable as `{{files.<saveAs>}}` (e.g. as `items.from`) and listed in the report's `files`. Other list layouts are not supported.
 - Keep setup repeatable and free of irreversible changes. Prefer goto at the beginning of each item so a partly filled form can be rebuilt. Autosave counts as a write; split operations with several irreversible effects into separate workflows.
 - Deduplication uses workflow name + `items.scope` + business key. Set scope from destination/account/operation params, never the CSV filename. Include a period in the key for recurring operations. Different data under a completed key is blocked rather than silently skipped.
-- Input is .xlsx, or .csv in UTF-8 or else Windows-1252 (Excel's classic CSV export), separated by `,` or `;`. Never store credentials in a workflow: pass them as params.
+- Input is .xlsx, or .csv in UTF-8 or else Windows-1252 (Excel's classic CSV export), separated by `,` or `;`. Excel number formats are not applied (`07001` reads as `7001`, `15%` as `0.15`): format identifier columns as Text. Hidden and filtered-out rows are read too. Formulas use the result Excel saved; a referenced cell holding a formula error or no saved result is rejected as empty. Never store credentials in a workflow: declare a secret param, read from an environment variable at run time and never stored in the workflow or journal.
+- File paths from item data (`upload` of `{{item.File}}`) must stay inside the input file's folder, or the run folder for a downloaded or extracted input; `goto` opens only http(s) URLs. Agents pass absolute paths; the CLI resolves relative ones against its working directory.
 - The whole input is validated before processing. Duplicate/empty keys, missing referenced values and malformed headers are rejected. Rows are frozen in the journal; changing the source file does not alter a resumed batch.
 - A recorded first submission already changed the site. After saving its workflow, call MCP `run_adopt` with the exact full row and evidence note. This runs only confirmation steps and journals the row so replay skips it. Do not replay it before adopting or resolving it.
 - Resolving done confirms the effect exists. Resolving failed confirms it did not occur and enables retry. Every decision requires an evidence note and is logged. For a duplicate-held item, resolve its original run first.
-- One operation controls the browser at a time. Concurrent CLI/MCP attempts return a busy error; leases from dead processes are recovered automatically.
+- One operation controls the browser at a time. Concurrent CLI/MCP attempts get a busy error naming the active run; a lease left by a process that died or stopped responding is recovered automatically. Read-only reports and page snapshots work during a run.
 
 The journal protects actions executed through this Ritoko installation. It cannot prevent independent submissions, guarantee that a website is idempotent, or infer success from a generic message. Workflows need business checks specific to the site. Legacy runs without a frozen definition resume only if their workflow version still matches; otherwise inspect their outcomes first.
 
@@ -79,7 +87,7 @@ Document reading is optional. `document_image` sends a downloaded JPEG/PNG to th
 
 ## Scope
 
-Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections, and it stops for logins and MFA so you complete them yourself.
+Ritoko automates sites you are allowed to automate. It does not bypass CAPTCHAs or anti-bot protections. It does not detect logins itself: while recording, the agent asks you to log in or complete MFA in the Ritoko window; during replay, a login page where the form was expected pauses the run as `needs_repair`.
 
 ## Development
 

@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, rm } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -22,6 +22,8 @@ export class Browser {
 
   constructor(options: { profile?: string; headless?: boolean; executablePath?: string } = {}) {
     this.profile = resolve(options.profile ?? paths.profile)
+    // Owner-only: the profile holds the user's cookies, and Ritoko's home its journal.
+    mkdirSync(this.profile, { recursive: true, mode: 0o700 })
     this.headless = options.headless ?? process.env.RITOKO_HEADLESS === '1'
     this.executablePath = options.executablePath ?? process.env.RITOKO_CHROME_PATH
   }
@@ -42,7 +44,7 @@ export class Browser {
       try {
         await ledger.exclusive(async () => {
           if (await this.#attach()) return
-          await mkdir(this.profile, { recursive: true })
+          await mkdir(this.profile, { recursive: true, mode: 0o700 })
           await rm(join(this.profile, 'DevToolsActivePort'), { force: true })
           const child = spawn(
             chromePath(this.executablePath),
@@ -120,6 +122,11 @@ export class Browser {
     } catch {
       return false
     }
+  }
+
+  /** The working tab when this client is connected, without ever launching Chrome. */
+  get current(): Page | undefined {
+    return this.#connection?.isConnected() && !this.#page?.isClosed() ? this.#page : undefined
   }
 
   /** Disconnect this client; Chrome and its signed-in profile remain available to the other client. */

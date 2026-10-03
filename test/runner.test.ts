@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -34,6 +34,7 @@ function fakePage() {
     document: 1,
     failSubmit: false,
     failFill: false,
+    failValue: '',
     failUpload: false,
   }
   const locator = (css: string) => ({
@@ -47,7 +48,7 @@ function fakePage() {
       return state.absent.has(css) ? 0 : 1
     },
     async fill(value: string) {
-      if (state.failFill) throw new Error('field unavailable')
+      if (state.failFill || value === state.failValue) throw new Error('field unavailable')
       state.fills.push(css)
       state.values.set(css, value)
     },
@@ -347,6 +348,111 @@ describe('safe batch execution', () => {
     expect(f.state.clicks).toHaveLength(2)
   })
 
+  it('verifies a paused submitted item on its own page before retrying earlier failures', async () => {
+    const f = await fixture()
+    f.state.failValue = 'a@example.test'
+    f.state.absent.add('#ok')
+    const paused = await f.start()
+    expect(paused.report.counts).toEqual({ failed: 1, paused: 1 })
+    f.state.failValue = ''
+    await f.runner.repair(paused.report.runId, 'verify', target('#new-ok'))
+    expect((await f.runner.resume(paused.report.runId)).report.counts).toEqual({ done: 2 })
+    expect(f.state.clicks).toHaveLength(2)
+  })
+
+  it('lets other runs process the keys of a run paused before commit, then cancels it', async () => {
+    const f = await fixture()
+    f.state.absent.add('#name')
+    const paused = await f.start()
+    expect(paused.status).toBe('needs_repair')
+    f.state.absent.delete('#name')
+    expect((await f.start()).report.counts).toEqual({ done: 2 })
+    const cancelled = await f.runner.cancel(paused.report.runId)
+    expect(cancelled.status).toBe('stopped')
+    expect(cancelled.items.map((i) => [i.status, i.cause])).toEqual([
+      ['failed', 'cancelled'],
+      ['failed', 'cancelled'],
+    ])
+    expect(f.state.clicks).toHaveLength(2)
+  })
+
+  it('keeps a paused run repairable after resolving one of its review items', async () => {
+    const f = await fixture()
+    const run = f.seed()
+    f.ledger.updateItem(run.id, 0, { status: 'review', committed: true })
+    f.state.absent.add('#name')
+    expect((await f.runner.resume(run.id)).status).toBe('needs_repair')
+    await f.runner.resolve(run.id, 'a@example.test', 'done', 'Found the customer on the site')
+    expect(f.ledger.run(run.id).status).toBe('paused')
+    await f.runner.repair(run.id, 'name', target('#new-name'))
+    expect((await f.runner.resume(run.id)).status).toBe('done')
+  })
+
+  it('never resubmits completed keys after the scope is removed', async () => {
+    const f = await fixture()
+    await f.start()
+    const { warnings } = await f.store.save({
+      ...f.wf,
+      items: { from: '{{param.input}}', key: '{{item.Email}}' },
+    })
+    expect(warnings.join()).toMatch('items.scope changed')
+    expect((await f.start()).report.counts).toEqual({ skipped: 2 })
+    expect(f.state.clicks).toHaveLength(2)
+  })
+
+  it('reads secret params from the environment and never journals or echoes them', async () => {
+    const f = await fixture({
+      params: {
+        input: {},
+        account: { default: 'test' },
+        password: { secret: true, env: 'RITOKO_TEST_SECRET' },
+      },
+      item: [
+        { id: 'password', do: 'fill', target: target('#password'), value: '{{param.password}}' },
+        { id: 'submit', do: 'click', target: target('#submit'), commit: true },
+        { id: 'verify', do: 'expect', text: 'Welcome {{param.password}}', timeoutMs: 1 },
+      ],
+    })
+    await expect(f.start()).rejects.toThrow('RITOKO_TEST_SECRET')
+    await expect(f.runner.start(f.wf.name, { input: f.input, password: 'typed' })).rejects.toThrow('secret')
+    process.env.RITOKO_TEST_SECRET = 'hunter2-secret'
+    try {
+      const result = await f.start()
+      expect(f.state.values.get('#password')).toBe('hunter2-secret')
+      expect(result.report.items[0]?.message).toContain('Welcome ***')
+      expect(JSON.stringify([f.ledger.run(result.report.runId), result])).not.toContain('hunter2')
+    } finally {
+      delete process.env.RITOKO_TEST_SECRET
+    }
+  })
+
+  it('confines upload files chosen by item data to the input folder and opens only web URLs', async () => {
+    const f = await fixture({
+      item: [
+        { id: 'file', do: 'upload', target: target('#file'), file: '{{item.File}}', commit: true },
+        { id: 'verify', do: 'expect', target: target('#ok') },
+      ],
+    })
+    writeFileSync(join(f.root, 'inside.csv'), 'x')
+    writeFileSync(f.input, `Email,File\na@example.test,inside.csv\nb@example.test,${process.execPath}\n`)
+    const result = await f.start()
+    expect(result.report.items.map((i) => i.status)).toEqual(['done', 'failed'])
+    expect(result.report.items[1]?.message).toMatch('must stay inside')
+    expect(f.state.uploads).toEqual([realpathSync(join(f.root, 'inside.csv'))])
+    const local = await fixture({ setup: [{ id: 'setup', do: 'goto', url: 'file:///etc/passwd' }] })
+    expect((await local.start()).report.message).toMatch('http(s)')
+  })
+
+  it('requires absolute input paths when serving agents', async () => {
+    const f = await fixture()
+    const strict = new Runner({ page: async () => f.page }, f.ledger, f.store, join(f.root, 'runs'), {
+      absolutePaths: true,
+    })
+    const result = await strict.start(f.wf.name, { input: 'input.csv' })
+    expect(result.status).toBe('stopped')
+    expect(result.report.message).toMatch('absolute')
+  })
+
   it('reports active time only, without the pause before a resume', async () => {
     const f = await fixture()
     f.state.absent.add('#name')
@@ -444,7 +550,11 @@ describe('journal and workflow safety', () => {
 
   it('reclaims a dead process lease', async () => {
     const f = await fixture()
-    f.ledger.db.prepare('INSERT INTO leases VALUES (?, ?, ?)').run('execution', 'dead', 2147483647)
+    const lease = f.ledger.db.prepare('INSERT OR REPLACE INTO leases VALUES (?, ?, ?, ?)')
+    lease.run('execution', 'dead', 2147483647, Date.now())
+    await expect(f.ledger.exclusive(async () => 'recovered')).resolves.toBe('recovered')
+    // A live PID whose holder stopped refreshing its heartbeat (hung, or a recycled PID).
+    lease.run('execution', 'hung', process.pid, Date.now() - 120_000)
     await expect(f.ledger.exclusive(async () => 'recovered')).resolves.toBe('recovered')
   })
 
@@ -547,5 +657,7 @@ describe('journal and workflow safety', () => {
     await expect(readItems(f.input)).rejects.toThrow('duplicate')
     writeFileSync(f.input, 'Email,\na,b\n')
     await expect(readItems(f.input)).rejects.toThrow('empty')
+    writeFileSync(f.input, 'Email,Name,\na,b,\n')
+    expect(await readItems(f.input)).toEqual([{ Email: 'a', Name: 'b' }])
   })
 })

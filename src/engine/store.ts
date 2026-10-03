@@ -39,6 +39,10 @@ export class Store {
     const previous = await this.get(parsed.name).catch(() => undefined)
     const workflow = { ...parsed, version: (previous?.version ?? 0) + 1 }
     const warnings = check(workflow)
+    if (previous?.items && workflow.items && previous.items.scope !== workflow.items.scope)
+      warnings.push(
+        `items.scope changed from "${previous.items.scope}" to "${workflow.items.scope}": keys completed under the old scope are not recognized under a different one and would be submitted again.`,
+      )
     await mkdir(this.dir, { recursive: true })
     const file = join(this.dir, `${workflow.name}.json`)
     const temporary = `${file}.${randomUUID()}.tmp`
@@ -84,8 +88,12 @@ export function check(wf: Workflow): string[] {
       throw new Error(`${s.id}: expect text must not be empty`)
     if (s.do === 'expect' && s.value !== undefined && !s.target)
       throw new Error(`${s.id}: value verification needs a target`)
-    if (s.commit && !['click', 'press', 'upload'].includes(s.do))
-      throw new Error(`${s.id}: only click, press or upload may be a commit`)
+    if (s.commit && !['click', 'press', 'upload', 'select', 'check'].includes(s.do))
+      throw new Error(`${s.id}: only click, press, upload, select or check may be a commit`)
+  }
+  for (const [key, spec] of Object.entries(wf.params)) {
+    if (Boolean(spec.secret) !== Boolean(spec.env) || (spec.secret && spec.default !== undefined))
+      throw new Error(`param "${key}": a secret param needs "env" (its environment variable) and no default`)
   }
   if ([...wf.setup, ...wf.teardown].some((s) => s.commit))
     throw new Error('Commit steps belong in item, never setup or teardown')
@@ -111,7 +119,8 @@ export function check(wf: Workflow): string[] {
   const files = new Set<string>()
   const verify = (template: string, where: string, itemAllowed: boolean) => {
     for (const { ns, key } of references(template)) {
-      if (ns === 'param' && !(key in wf.params)) throw new Error(`${where}: unknown param "${key}"`)
+      if (ns === 'param' && !Object.hasOwn(wf.params, key))
+        throw new Error(`${where}: unknown param "${key}"`)
       if (ns === 'files' && !files.has(key))
         throw new Error(`${where}: "files.${key}" is not downloaded or extracted before`)
       if (ns === 'item' && !itemAllowed) throw new Error(`${where}: {{item.*}} is only allowed in item steps`)
@@ -119,7 +128,7 @@ export function check(wf: Workflow): string[] {
   }
   const walk = (steps: Step[], itemAllowed: boolean) => {
     for (const s of steps) {
-      for (const field of ['url', 'value', 'file', 'text'] as const)
+      for (const field of ['url', 'value', 'file', 'text', 'dialogText'] as const)
         if (field in s && typeof s[field as keyof Step] === 'string')
           verify(s[field as keyof Step] as string, s.id, itemAllowed)
       if ('target' in s && s.target) verify(JSON.stringify(s.target), s.id, itemAllowed)
@@ -133,6 +142,9 @@ export function check(wf: Workflow): string[] {
     verify(wf.items.scope, 'items.scope', false)
     if (references(wf.items.scope).some((r) => r.ns !== 'param'))
       throw new Error('items.scope may only reference params describing the destination/account/operation')
+    // Both are journaled.
+    if (references(wf.items.key + wf.items.scope).some((r) => r.ns === 'param' && wf.params[r.key]?.secret))
+      throw new Error('items.key and items.scope must not use a secret param')
   }
   walk(wf.item, true)
   walk(wf.teardown, false)

@@ -32,7 +32,7 @@ const base = {
     .regex(/^[\w-]+$/)
     .optional(),
   note: z.string().optional(),
-  /** Point of no return: once started, an interrupted item is never replayed blindly. */
+  /** Point of no return (click, press, upload, select or check): an interrupted item is never replayed blindly. */
   commit: z.boolean().optional(),
   timeoutMs: z.number().int().positive().max(120_000).optional(),
 }
@@ -96,6 +96,12 @@ export const Workflow = z
           description: z.string().optional(),
           required: z.boolean().default(true),
           default: z.string().optional(),
+          /** A credential: read from environment variable `env` at run time, never passed, stored or shown. */
+          secret: z.boolean().optional(),
+          env: z
+            .string()
+            .regex(/^[A-Za-z_]\w*$/, 'environment variable name')
+            .optional(),
         }),
       )
       .default({}),

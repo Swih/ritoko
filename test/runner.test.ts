@@ -374,6 +374,9 @@ describe('safe batch execution', () => {
       ['failed', 'cancelled'],
     ])
     expect(f.state.clicks).toHaveLength(2)
+    // Final: resuming would replay items whose keys other runs may already have processed.
+    await expect(f.runner.resume(paused.report.runId)).rejects.toThrow('cancelled for good')
+    expect(f.state.clicks).toHaveLength(2)
   })
 
   it('keeps a paused run repairable after resolving one of its review items', async () => {
@@ -546,6 +549,22 @@ describe('journal and workflow safety', () => {
     } finally {
       second.db.close()
     }
+  })
+
+  it('stops a holder whose lease was taken over, before it writes to the journal', async () => {
+    const f = await fixture()
+    const run = f.seed()
+    await expect(
+      f.ledger.exclusive(async () => {
+        f.ledger.db.prepare("UPDATE leases SET owner = 'thief' WHERE resource = 'execution'").run()
+        f.ledger.updateItem(run.id, 0, { status: 'running' })
+      }),
+    ).rejects.toThrow('lost its execution lease')
+    expect(f.ledger.items(run.id)[0]?.status).toBe('pending')
+    // The thief's lease is not released by the stopped holder.
+    expect(f.ledger.db.prepare("SELECT owner FROM leases WHERE resource = 'execution'").get()?.owner).toBe(
+      'thief',
+    )
   })
 
   it('reclaims a dead process lease', async () => {

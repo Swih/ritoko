@@ -102,6 +102,8 @@ export function processAlive(pid: number): boolean {
 /** Durable journal of runs and items (node:sqlite). Every state change is written before moving on. */
 export class Ledger {
   readonly db: DatabaseSync
+  /** Lease held by this client for the running operation: every journal write is fenced by it. */
+  #owner: string | null = null
 
   constructor(file: string) {
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true })
@@ -174,8 +176,18 @@ export class Ledger {
     }
   }
 
+  /**
+   * Fencing: a holder whose lease was taken over (heartbeat silent for LEASE_EXPIRY_MS, e.g. a suspended
+   * laptop) must not write to the journal or go on to submit; its next write fails instead.
+   */
+  #fence(): void {
+    if (this.#owner && !this.db.prepare('SELECT 1 FROM leases WHERE owner = ?').get(this.#owner))
+      throw new Error('Ritoko lost its execution lease to another process: this operation was stopped.')
+  }
+
   async exclusive<T>(fn: () => Promise<T>, resource = 'execution'): Promise<T> {
     const owner = randomUUID()
+    const outer = this.#owner
     this.transaction(() => {
       const held = this.db.prepare('SELECT pid, heartbeat FROM leases WHERE resource = ?').get(resource)
       // A recycled PID or a hung process stops the heartbeat even though the PID looks alive.
@@ -185,6 +197,7 @@ export class Ledger {
         .prepare('INSERT OR REPLACE INTO leases (resource, owner, pid, heartbeat) VALUES (?, ?, ?, ?)')
         .run(resource, owner, process.pid, Date.now())
     })
+    if (resource === 'execution') this.#owner = owner
     const beat = setInterval(() => {
       this.db.prepare('UPDATE leases SET heartbeat = ? WHERE owner = ?').run(Date.now(), owner)
     }, HEARTBEAT_MS)
@@ -193,6 +206,7 @@ export class Ledger {
       return await fn()
     } finally {
       clearInterval(beat)
+      this.#owner = outer
       this.db.prepare('DELETE FROM leases WHERE resource = ? AND owner = ?').run(resource, owner)
     }
   }
@@ -266,6 +280,7 @@ export class Ledger {
       >
     >,
   ): void {
+    this.#fence()
     const sets: string[] = []
     const values: (string | number | null)[] = []
     for (const [k, v] of Object.entries(patch)) {
@@ -336,6 +351,7 @@ export class Ledger {
       >
     >,
   ): void {
+    this.#fence()
     const sets = Object.keys(patch).map((k) => `${k === 'stepId' ? 'step_id' : k} = ?`)
     const values = Object.values(patch).map((v) => (typeof v === 'boolean' ? Number(v) : (v ?? null)))
     this.db
@@ -380,6 +396,7 @@ export class Ledger {
   }
 
   event(runId: string, kind: string, detail: unknown): void {
+    this.#fence()
     this.db
       .prepare('INSERT INTO events (run_id, kind, detail, at) VALUES (?, ?, ?, ?)')
       .run(runId, kind, JSON.stringify(detail), now())
@@ -400,8 +417,8 @@ export class Ledger {
         message: `Manually resolved: ${note}`,
       })
       this.event(runId, 'resolve', { key, status, note })
-      // A paused run keeps waiting for its repair; other runs finish items on resume.
-      if (this.run(runId).status !== 'paused')
+      // A paused run keeps waiting for its repair; other runs finish items on resume; a cancelled run stays stopped.
+      if (this.run(runId).status !== 'paused' && !this.cancelled(runId))
         this.updateRun(runId, { status: 'partial', phase: 'items', stepId: null })
     })
   }
@@ -429,6 +446,11 @@ export class Ledger {
       this.event(runId, 'cancel', {})
       this.updateRun(runId, { status: 'stopped', stepId: null, message: 'Cancelled' })
     })
+  }
+
+  /** A cancelled run is final: resuming it would replay items its cancellation released to other runs. */
+  cancelled(runId: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM events WHERE run_id = ? AND kind = 'cancel'").get(runId))
   }
 
   lastRun(workflow?: string): Run | undefined {

@@ -306,6 +306,8 @@ export class Runner {
   }
 
   async #execute(runId: string): Promise<Outcome> {
+    if (this.ledger.cancelled(runId))
+      throw new Error(`Run ${runId} was cancelled for good: start a new run instead of resuming it.`)
     let run = this.ledger.run(runId)
     if (run.status === 'done') {
       if (this.ledger.items(runId).every((i) => ['done', 'skipped'].includes(i.status)))

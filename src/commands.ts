@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { Browser } from './engine/browser.ts'
+import { Host } from './engine/host.ts'
 import { Ledger } from './engine/ledger.ts'
 import { paths } from './engine/paths.ts'
 import { type Outcome, Runner } from './engine/runner.ts'
@@ -17,6 +18,8 @@ const USAGE = `ritoko <command>
   resolve <runId> <key> done|failed --note "site check"
   cancel <runId>                         stop a run for good; unsubmitted items fail as cancelled
   browser-close                          close Ritoko's Chrome explicitly
+  host start <workflow> [--param k=v]…   run a batch in the agent's integrated browser, one action at a time
+  host next <runId> [--result <json>]    report the last action's result, get the next action
 
 Workflows and runs live in ${paths.workflows} and ${paths.runs}.`
 
@@ -28,6 +31,7 @@ const { positionals, values } = parseArgs({
     headless: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
     note: { type: 'string' },
+    result: { type: 'string' },
   },
 })
 if (values.headless) process.env.RITOKO_HEADLESS = '1'
@@ -106,6 +110,25 @@ try {
     case 'browser-close':
       await runner.ledger.exclusive(async () => browser.shutdown())
       break
+    case 'host': {
+      const host = new Host(runner.ledger, runner.store)
+      const [, sub, target] = positionals
+      if (sub === 'start' && target) {
+        const params = Object.fromEntries(
+          (values.param as string[]).map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]),
+        )
+        console.log(JSON.stringify(await runner.ledger.exclusive(() => host.start(target, params))))
+      } else if (sub === 'next' && target) {
+        const result = values.result ? JSON.parse(values.result) : undefined
+        console.log(
+          JSON.stringify({
+            runId: target,
+            action: await runner.ledger.exclusive(() => host.next(target, result)),
+          }),
+        )
+      } else throw new Error('host start <workflow> | host next <runId> [--result <json>]')
+      break
+    }
     case 'cancel':
       if (!arg) throw new Error('cancel needs a run id')
       console.log(JSON.stringify(await runner.cancel(arg), null, 2))

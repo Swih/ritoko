@@ -24,17 +24,18 @@ export function userChromeData(): string {
 }
 
 /**
- * The browser the agent records in and the engine replays in. By default it is the user's own Chrome, with
- * its cookies and sessions, once the user allowed remote debugging at chrome://inspect/#remote-debugging:
- * Ritoko then works in a tab of its own and never closes Chrome or the user's tabs. Otherwise, and for
- * headless runs, it is a Chrome with a dedicated persistent profile, where logins are done once.
+ * The browser the engine drives. By default it is the user's own Chrome, with its cookies and sessions, once
+ * the user allowed remote debugging at chrome://inspect/#remote-debugging: Ritoko works in a tab of its own and
+ * never closes Chrome or the user's tabs. A clean Chrome with a dedicated profile (no personal logins) is used
+ * only when asked (RITOKO_BROWSER=clean), for headless runs and for an explicit profile: never as a silent
+ * fallback.
  */
 export class Browser {
   readonly profile: string
   readonly headless: boolean
   readonly executablePath?: string
-  /** 'auto' (user's Chrome when allowed, else dedicated), 'chrome' (user's Chrome only) or 'dedicated'. */
-  readonly mode: 'auto' | 'chrome' | 'dedicated'
+  /** 'chrome' (the user's own Chrome) or 'dedicated' (a clean Chrome with Ritoko's own profile). */
+  readonly mode: 'chrome' | 'dedicated'
   #connection: Connection | undefined
   #context: BrowserContext | undefined
   #page: Page | undefined
@@ -47,11 +48,11 @@ export class Browser {
     mkdirSync(this.profile, { recursive: true, mode: 0o700 })
     this.headless = options.headless ?? process.env.RITOKO_HEADLESS === '1'
     this.executablePath = options.executablePath ?? process.env.RITOKO_CHROME_PATH
-    const mode = process.env.RITOKO_BROWSER ?? 'auto'
-    if (!['auto', 'chrome', 'dedicated'].includes(mode))
-      throw new Error('RITOKO_BROWSER must be auto, chrome or dedicated')
+    const mode = process.env.RITOKO_BROWSER ?? 'chrome'
+    if (!['chrome', 'clean', 'dedicated'].includes(mode))
+      throw new Error('RITOKO_BROWSER must be chrome or clean')
     // An explicit profile (tests, isolated homes) or a headless run never uses the user's Chrome.
-    this.mode = options.profile || this.headless ? 'dedicated' : (mode as Browser['mode'])
+    this.mode = options.profile || this.headless || mode !== 'chrome' ? 'dedicated' : 'chrome'
   }
 
   /** True when Ritoko drives the user's own Chrome rather than its dedicated one. */
@@ -68,12 +69,12 @@ export class Browser {
   }
 
   async #open(): Promise<Page> {
-    if (this.mode !== 'dedicated' && (this.#shared || !this.#connection?.isConnected())) {
-      if (await this.#openShared()) return this.#page as Page
-      if (this.mode === 'chrome')
-        throw new Error(
-          'Your Chrome does not accept Ritoko yet: open chrome://inspect/#remote-debugging in Chrome, allow remote debugging, then accept the prompt Chrome shows when Ritoko connects.',
-        )
+    if (this.mode === 'chrome') {
+      const why = await this.#openShared()
+      if (why === true) return this.#page as Page
+      throw new Error(
+        `Ritoko could not connect to your Chrome (${why}). Open Chrome, enable chrome://inspect/#remote-debugging, and click Allow when Chrome asks. For a clean Chrome without your logins, ask for it (RITOKO_BROWSER=clean).`,
+      )
     }
     const connecting = !this.#connection?.isConnected()
     let launched = false
@@ -81,7 +82,7 @@ export class Browser {
       const ledger = new Ledger(join(dirname(this.profile), 'ritoko.db'))
       try {
         await ledger.exclusive(async () => {
-          if (await this.#attach()) return
+          if ((await this.#attach()) === true) return
           await mkdir(this.profile, { recursive: true, mode: 0o700 })
           await rm(join(this.profile, 'DevToolsActivePort'), { force: true })
           const child = spawn(
@@ -108,7 +109,7 @@ export class Browser {
           const deadline = Date.now() + 20_000
           while (Date.now() < deadline) {
             if (launchError) throw launchError
-            if (await this.#attach()) return
+            if ((await this.#attach()) === true) return
             await delay(100)
           }
           throw new Error(
@@ -136,8 +137,11 @@ export class Browser {
    * Attaches to the user's Chrome and returns Ritoko's own tab there: the one it used last time (its target id
    * is kept in Ritoko's home), else a new one. Chrome asks the user to allow each new connection.
    */
-  async #openShared(): Promise<boolean> {
-    if (!this.#connection?.isConnected() && !(await this.#attach(userChromeData(), 60_000))) return false
+  async #openShared(): Promise<true | string> {
+    if (!this.#connection?.isConnected()) {
+      const attached = await this.#attach(userChromeData(), 60_000)
+      if (attached !== true) return attached
+    }
     this.#shared = true
     if (this.#page && !this.#page.isClosed()) return true
     const context = this.#context as BrowserContext
@@ -165,9 +169,16 @@ export class Browser {
     return true
   }
 
-  async #attach(dir = this.profile, timeout = 1_000): Promise<boolean> {
+  /** Connects to the Chrome whose DevToolsActivePort is in `dir`: true, or the reason it could not. */
+  async #attach(dir = this.profile, timeout = 1_000): Promise<true | string> {
+    let file: string
     try {
-      const [port, route] = (await readFile(join(dir, 'DevToolsActivePort'), 'utf8')).trim().split(/\r?\n/)
+      file = await readFile(join(dir, 'DevToolsActivePort'), 'utf8')
+    } catch {
+      return 'remote debugging was never enabled in this Chrome'
+    }
+    try {
+      const [port, route] = file.trim().split(/\r?\n/)
       if (
         !port ||
         !/^\d+$/.test(port) ||
@@ -176,7 +187,7 @@ export class Browser {
         !route ||
         !/^\/devtools\/browser\/[\w-]+$/.test(route)
       )
-        return false
+        return 'its DevToolsActivePort file is invalid'
       this.#connection = await chromium.connectOverCDP(`ws://127.0.0.1:${port}${route}`, {
         timeout,
         isLocal: true,
@@ -187,9 +198,14 @@ export class Browser {
         this.#context = undefined
         this.#page = undefined
       })
-      return Boolean(this.#context)
-    } catch {
-      return false
+      return this.#context ? true : 'it exposes no browser context'
+    } catch (error) {
+      const message = (error as Error).message
+      return /ECONNREFUSED/.test(message)
+        ? 'Chrome is not running, or remote debugging is off'
+        : /Timeout/i.test(message)
+          ? 'the connection was not allowed in time'
+          : (message.split('\n')[0] ?? message)
     }
   }
 

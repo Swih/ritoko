@@ -28,7 +28,7 @@ const network = new NetworkCapture()
 /** Selectors of password inputs filled while recording: a workflow must not store their literal values. */
 const passwordFields = new Set<string>()
 
-const server = new McpServer({ name: 'ritoko', version: '0.1.0' })
+const server = new McpServer({ name: 'ritoko', version: '0.1.1' })
 
 /** Compact JSON without null fields: every result lands in the agent's context. */
 const block = (value: unknown) => ({

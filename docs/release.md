@@ -43,7 +43,7 @@ Controlled fixtures cannot establish every site's behavior. Keep the following w
 
 First publish the validated tarball to npm with a logged-in maintainer account. Confirm `npm view ritoko@<version> version mcpName dist.integrity` and install that registry version in a clean consumer directory. Keep package, lockfiles, plugin manifests and `server.json` versions aligned; npm versions are immutable.
 
-Then manually dispatch **Publish MCP Registry** on `main`. It requires successful CI on the exact commit and the published matching npm version, validates the manifest with a pinned official publisher, and authenticates via GitHub OIDC. No persistent registry token is needed. See the [official publishing guide](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx).
+Then manually dispatch **Publish MCP Registry** on `main`. It requires successful CI on the exact commit and the published matching npm version, validates the manifest with a pinned official publisher, and authenticates via GitHub OIDC. The namespace is case-sensitive: this repository owns `io.github.Swih/ritoko`. `release:check` checks it against the GitHub repository owner before publication. No persistent registry token is needed. See the [official publishing guide](https://github.com/modelcontextprotocol/registry/blob/main/docs/modelcontextprotocol-io/github-actions.mdx).
 
 For later npm releases, configure [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) on the package before adding a publishing workflow. Public GitHub Actions can then publish with OIDC and provenance, without storing an npm token in the repository.
 

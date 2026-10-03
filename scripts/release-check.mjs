@@ -11,6 +11,17 @@ const lock = json('package-lock.json')
 assert.equal(pkg.name, 'ritoko')
 assert.equal(pkg.private, undefined, 'The npm package must be public')
 assert.equal(pkg.mcpName, server.name, 'npm ownership proof must match the MCP namespace')
+const repository = new URL(pkg.repository.url.replace(/^git\+/, ''))
+assert.equal(repository.hostname, 'github.com', 'GitHub OIDC publishing requires a GitHub repository')
+const [owner, repositoryName] = repository.pathname
+  .slice(1)
+  .replace(/\.git$/, '')
+  .split('/')
+assert.equal(
+  server.name,
+  `io.github.${owner}/${repositoryName}`,
+  'MCP namespace must match the case-sensitive GitHub ownership granted by OIDC',
+)
 assert(server.description.length <= 100, 'MCP Registry descriptions are limited to 100 characters')
 assert.equal(pkg.version, server.version, 'npm and MCP versions must match')
 assert.equal(pkg.version, lock.version, 'npm lock version must match')

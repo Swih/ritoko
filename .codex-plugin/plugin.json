@@ -1,6 +1,6 @@
 {
   "name": "ritoko",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Record browser procedures, replay new data, verify results and hold uncertain submissions for review.",
   "author": { "name": "Swih", "url": "https://github.com/Swih" },
   "homepage": "https://ritoko.com",

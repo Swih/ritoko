@@ -147,7 +147,7 @@ export class McpClients {
 
   async #connect(name: string): Promise<Connected> {
     const spec = await this.#resolve(name)
-    const client = new Client({ name: 'ritoko', version: '0.1.0' }, { capabilities: {} })
+    const client = new Client({ name: 'ritoko', version: '0.1.1' }, { capabilities: {} })
     let stderr = ''
     let transport: StdioClientTransport | StreamableHTTPClientTransport
     if ('command' in spec) {

@@ -1,9 +1,9 @@
 {
   "name": "ritoko",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Turn a browser task your agent solved once into a reliable, resumable procedure.",
   "license": "MIT",
-  "mcpName": "io.github.swih/ritoko",
+  "mcpName": "io.github.Swih/ritoko",
   "type": "module",
   "engines": {
     "node": ">=24"

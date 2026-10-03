@@ -1,16 +1,16 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.swih/ritoko",
+  "name": "io.github.Swih/ritoko",
   "description": "Record browser tasks, replay CSV/Excel rows, verify results and resume locally.",
   "repository": { "url": "https://github.com/Swih/ritoko", "source": "github" },
   "websiteUrl": "https://ritoko.com",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "ritoko",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "runtimeHint": "npx",
       "transport": { "type": "stdio" },
       "packageArguments": [{ "type": "positional", "value": "mcp" }]

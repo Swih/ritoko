@@ -80,6 +80,7 @@ function node(args: string[], cwd: string, home: string) {
 // from the installed tarball's runtime dependencies, outside the source checkout.
 const protocolSmoke = `
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const [launcher, input, base] = process.argv.slice(2)
@@ -89,6 +90,8 @@ let stderr = ''
 transport.stderr?.on('data', (chunk) => { stderr += chunk })
 try {
   await client.connect(transport)
+  const installedPackage = JSON.parse(readFileSync(new URL('./node_modules/ritoko/package.json', import.meta.url), 'utf8'))
+  assert.equal(client.getServerVersion()?.version, installedPackage.version)
   const names = (await client.listTools()).tools.map((tool) => tool.name)
   for (const name of ['workflow_save', 'run_start', 'run_report', 'host_start', 'host_next']) assert(names.includes(name), name)
   const call = async (name, args) => {

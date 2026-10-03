@@ -47,7 +47,7 @@ Used on Windows 11. CI runs the unit tests and the real-Chrome end-to-end tests 
 Ritoko is a local stdio MCP server plus an Agent Skills folder. A client needs access to that local process and run files. An isolated cloud client cannot reach them by itself. The direct runner controls local Chrome; host mode lets a compatible local agent execute browser actions or already connected MCP tools. Only Claude Code and Codex CLI are tested as plugin clients; the formats below have not been run. Two ways to point a client at the server:
 
 - Local clone (works today): `git clone https://github.com/Swih/ritoko`, then run `node /absolute/path/to/ritoko/bin/ritoko.mjs mcp`. The first start installs dependencies once.
-- npm installation: `npx -y ritoko@0.1.0 mcp`. The package ships compiled JavaScript and needs no build step.
+- npm installation: `npx -y ritoko@0.1.1 mcp`. The package ships compiled JavaScript and needs no build step.
 
 Generic MCP client (Cursor `~/.cursor/mcp.json`, VS Code `.vscode/mcp.json` with `servers` instead of `mcpServers`, Gemini CLI `~/.gemini/settings.json`, Claude Desktop `claude_desktop_config.json`). Not tested yet:
 

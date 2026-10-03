@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('Ritoko requires Node.js 24 or newer.')
@@ -23,8 +23,20 @@ for (const dependency of dependencies) {
   }
 }
 if (!ready) {
+  // npm-cli.js next to node.exe (Windows), under the install prefix (nvm, fnm, volta, official tarballs),
+  // under libexec (Homebrew), or wherever the npm on PATH links to; then distribution packages.
+  const prefix = dirname(dirname(process.execPath))
+  const cli = join('node_modules', 'npm', 'bin', 'npm-cli.js')
+  const linked = (process.env.PATH ?? '')
+    .split(delimiter)
+    .map((dir) => join(dir, 'npm'))
+    .filter(existsSync)
+    .map((file) => realpathSync(file))
   const candidates = [
-    join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    join(dirname(process.execPath), cli),
+    join(prefix, 'lib', cli),
+    join(prefix, 'libexec', 'lib', cli),
+    ...linked.filter((file) => file.endsWith('npm-cli.js')),
     '/usr/share/nodejs/npm/bin/npm-cli.js',
     '/usr/local/lib/node_modules/npm/bin/npm-cli.js',
   ]

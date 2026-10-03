@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { type BrowserContext, type Browser as Connection, chromium, type Page } from 'playwright-core'
@@ -174,7 +175,9 @@ function chromePath(explicit?: string): string {
           .filter((root): root is string => Boolean(root))
           .map((root) => join(root, 'Google', 'Chrome', 'Application', 'chrome.exe'))
       : process.platform === 'darwin'
-        ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+        ? ['/Applications', join(homedir(), 'Applications')].map((dir) =>
+            join(dir, 'Google Chrome.app', 'Contents', 'MacOS', 'Google Chrome'),
+          )
         : [
             '/usr/bin/google-chrome',
             '/usr/bin/google-chrome-stable',

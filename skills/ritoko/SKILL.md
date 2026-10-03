@@ -53,9 +53,9 @@ Table extraction to CSV and document images: see [reference.md](reference.md).
 2. `step_repair` with the `runId`, workflow, step id and new target (keep a fallback). The commit step also needs `confirmCommitTarget: true` once you checked it is the same submit control.
 3. `run_resume` with the same `runId`. Never restart with `run_start`: done items stay done.
 
-If the user decides a run cannot be repaired, `run_cancel` stops it for good: unsubmitted items fail as cancelled, possibly submitted ones go to review.
+Before commit, resume rebuilds the form. After commit, only verification resumes on the same live page; otherwise the item becomes review. Never use browser actions to submit a paused committed item again.
 
-Before commit, resume rebuilds the form. After commit, only verification resumes on the same live page; otherwise the item becomes review. Never use browser actions to submit a paused committed item again. If the user gives up on a run, `run_cancel` it: unsubmitted items fail as cancelled (later runs process their keys), submitted ones go to review.
+If the user gives up on a run, `run_cancel` stops it for good: unsubmitted items fail as cancelled (later runs process their keys), possibly submitted ones go to review. A cancelled run cannot be resumed; start a new run.
 
 ## Review and statuses
 

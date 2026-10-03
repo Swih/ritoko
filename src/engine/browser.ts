@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -8,18 +8,38 @@ import { type BrowserContext, type Browser as Connection, chromium, type Page } 
 import { Ledger, processAlive } from './ledger.ts'
 import { paths } from './paths.ts'
 
+/** The user's everyday Chrome profile folder, where Chrome writes DevToolsActivePort once remote debugging is allowed. */
+export function userChromeData(): string {
+  if (process.env.RITOKO_CHROME_USER_DATA) return resolve(process.env.RITOKO_CHROME_USER_DATA)
+  if (process.platform === 'win32')
+    return join(
+      process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'),
+      'Google',
+      'Chrome',
+      'User Data',
+    )
+  if (process.platform === 'darwin')
+    return join(homedir(), 'Library', 'Application Support', 'Google', 'Chrome')
+  return join(homedir(), '.config', 'google-chrome')
+}
+
 /**
- * One Chrome window with a dedicated, persistent profile: the agent records in it and the engine replays in it,
- * so logins done once by the user are reused by every run.
+ * The browser the agent records in and the engine replays in. By default it is the user's own Chrome, with
+ * its cookies and sessions, once the user allowed remote debugging at chrome://inspect/#remote-debugging:
+ * Ritoko then works in a tab of its own and never closes Chrome or the user's tabs. Otherwise, and for
+ * headless runs, it is a Chrome with a dedicated persistent profile, where logins are done once.
  */
 export class Browser {
   readonly profile: string
   readonly headless: boolean
   readonly executablePath?: string
+  /** 'auto' (user's Chrome when allowed, else dedicated), 'chrome' (user's Chrome only) or 'dedicated'. */
+  readonly mode: 'auto' | 'chrome' | 'dedicated'
   #connection: Connection | undefined
   #context: BrowserContext | undefined
   #page: Page | undefined
   #opening: Promise<Page> | undefined
+  #shared = false
 
   constructor(options: { profile?: string; headless?: boolean; executablePath?: string } = {}) {
     this.profile = resolve(options.profile ?? paths.profile)
@@ -27,6 +47,16 @@ export class Browser {
     mkdirSync(this.profile, { recursive: true, mode: 0o700 })
     this.headless = options.headless ?? process.env.RITOKO_HEADLESS === '1'
     this.executablePath = options.executablePath ?? process.env.RITOKO_CHROME_PATH
+    const mode = process.env.RITOKO_BROWSER ?? 'auto'
+    if (!['auto', 'chrome', 'dedicated'].includes(mode))
+      throw new Error('RITOKO_BROWSER must be auto, chrome or dedicated')
+    // An explicit profile (tests, isolated homes) or a headless run never uses the user's Chrome.
+    this.mode = options.profile || this.headless ? 'dedicated' : (mode as Browser['mode'])
+  }
+
+  /** True when Ritoko drives the user's own Chrome rather than its dedicated one. */
+  get shared(): boolean {
+    return this.#shared
   }
 
   async page(): Promise<Page> {
@@ -38,6 +68,13 @@ export class Browser {
   }
 
   async #open(): Promise<Page> {
+    if (this.mode !== 'dedicated' && (this.#shared || !this.#connection?.isConnected())) {
+      if (await this.#openShared()) return this.#page as Page
+      if (this.mode === 'chrome')
+        throw new Error(
+          'Your Chrome does not accept Ritoko yet: open chrome://inspect/#remote-debugging in Chrome, allow remote debugging, then accept the prompt Chrome shows when Ritoko connects.',
+        )
+    }
     const connecting = !this.#connection?.isConnected()
     let launched = false
     if (connecting) {
@@ -95,11 +132,42 @@ export class Browser {
     return this.#page
   }
 
-  async #attach(): Promise<boolean> {
+  /**
+   * Attaches to the user's Chrome and returns Ritoko's own tab there: the one it used last time (its target id
+   * is kept in Ritoko's home), else a new one. Chrome asks the user to allow each new connection.
+   */
+  async #openShared(): Promise<boolean> {
+    if (!this.#connection?.isConnected() && !(await this.#attach(userChromeData(), 60_000))) return false
+    this.#shared = true
+    if (this.#page && !this.#page.isClosed()) return true
+    const context = this.#context as BrowserContext
+    const marker = join(dirname(this.profile), 'chrome-tab')
+    const kept = await readFile(marker, 'utf8').catch(() => '')
+    const id = async (page: Page) => {
+      const session = await context.newCDPSession(page)
+      try {
+        return (await session.send('Target.getTargetInfo')).targetInfo.targetId
+      } finally {
+        await session.detach().catch(() => {})
+      }
+    }
+    for (const page of context.pages())
+      if (kept && (await id(page).catch(() => '')) === kept) this.#page = page
+    if (!this.#page) {
+      this.#page = await context.newPage()
+      await writeFile(marker, await id(this.#page), { mode: 0o600 })
+    }
+    // Only Ritoko's tab gets the same-tab script: the user's own tabs behave as usual.
+    await this.#page.addInitScript(sameTab)
+    this.#page.setDefaultTimeout(10_000)
+    this.#page.setDefaultNavigationTimeout(30_000)
+    await this.#page.bringToFront()
+    return true
+  }
+
+  async #attach(dir = this.profile, timeout = 1_000): Promise<boolean> {
     try {
-      const [port, route] = (await readFile(join(this.profile, 'DevToolsActivePort'), 'utf8'))
-        .trim()
-        .split(/\r?\n/)
+      const [port, route] = (await readFile(join(dir, 'DevToolsActivePort'), 'utf8')).trim().split(/\r?\n/)
       if (
         !port ||
         !/^\d+$/.test(port) ||
@@ -110,7 +178,7 @@ export class Browser {
       )
         return false
       this.#connection = await chromium.connectOverCDP(`ws://127.0.0.1:${port}${route}`, {
-        timeout: 1_000,
+        timeout,
         isLocal: true,
       })
       this.#context = this.#connection.contexts()[0]
@@ -140,6 +208,8 @@ export class Browser {
    * a Chrome still closing (slower on macOS) would be reattached by the next client, or absorb a relaunch.
    */
   async shutdown(): Promise<void> {
+    // The user's own Chrome is never closed: Ritoko only disconnects from it.
+    if (this.#shared || (!this.#connection && this.mode !== 'dedicated')) return this.close()
     if (!this.#connection) await this.page()
     const session = await this.#connection?.newBrowserCDPSession()
     const info = await session?.send('SystemInfo.getProcessInfo').catch(() => undefined)

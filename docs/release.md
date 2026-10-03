@@ -58,3 +58,29 @@ Directory submission is separate from publishing a package:
 | [OpenAI plugin directory](https://developers.openai.com/plugins/deploy/submission) | Verified developer identity, public metadata and review; the [remote MCP review](https://developers.openai.com/plugins/deploy/app-review) requires a public endpoint, which the local stdio server does not provide |
 
 Do not claim a directory accepted or indexed a submission until its public listing or review response confirms it. A paid listing needs its own budget authorization.
+
+## Maintaining distributed versions
+
+GitHub is the source; npm is the executable distribution. Pushing a fix to GitHub alone does not update a published npm package, an already running MCP process or a separately published directory release.
+
+For each executable change, choose a new version, align the package, root lock, plugin manifests, MCP manifest and protocol version, then run the release gates. Publish the validated npm tarball, verify a clean install of that registry version, and dispatch **Publish MCP Registry** on the same green commit. Create the corresponding GitHub release with its changelog and tarball. A failed directory update does not require republishing the same immutable npm version: retry that directory using the published version.
+
+| Destination | Routine update |
+|---|---|
+| npm | Publish a new immutable version; stable publications use the `latest` tag by default. Git pushes do not publish packages. |
+| Official MCP Registry | Dispatch the existing workflow for each npm release. It validates and publishes the versioned manifest after CI and npm checks. |
+| GitHub | Push source changes; publish release notes and the matching archive for package releases. |
+| Glama | Rebuild from the new source revision, check the detected tools, then publish its corresponding release. |
+| Link-only directories such as the submitted mcpservers.org listing | Keep the GitHub link stable; update submitted metadata when the name, description, installation or supported features change. Their review/indexing is separate. |
+| Smithery, once distributed there | Build and test a new MCPB bundle, then publish its release. The npm tarball does not replace a bundle. |
+
+Consumers choose their update policy:
+
+- `npx -y ritoko@0.1.1 mcp` keeps a reproducible version until the configuration changes.
+- `npx --yes --prefer-online ritoko@latest mcp` checks the stable npm tag at launch. It still needs a process/client restart and does not replace a running server.
+- A globally installed copy needs `npm install -g ritoko@latest`; a cloned source installation needs the new revision, dependencies and build.
+- A client-managed plugin or MCPB bundle follows that client's update mechanism. A directory listing alone does not upgrade a local installation.
+
+Use pinned versions for repeatable automation; test an upgrade on a small batch before moving production workflows to it. See [npm execution and cache behavior](https://docs.npmjs.com/cli/v11/commands/npm-exec/) and [npm publishing and dist tags](https://docs.npmjs.com/cli/v11/commands/npm-publish/).
+
+The official MCP step is automated after a manual dispatch. npm publishing can later use trusted publishing, and a single release workflow can coordinate both; Glama/Smithery automation needs their account and release integration. Keep these steps explicit until those integrations have been configured and tested.

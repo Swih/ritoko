@@ -1,0 +1,286 @@
+{
+  "name": "ritoko-challenge",
+  "version": 1,
+  "description": "Ritoko Challenge: generate an asset in the AI studio, download it under a readable name, then submit a changing entry form for each spreadsheet row, and extract the results table.",
+  "params": {
+    "base": {
+      "description": "Challenge server URL",
+      "default": "http://127.0.0.1:4173"
+    }
+  },
+  "items": {
+    "from": "{{files.input.csv}}",
+    "key": "{{item.Email}}",
+    "scope": "{{param.base}}"
+  },
+  "setup": [
+    {
+      "id": "open",
+      "do": "goto",
+      "url": "{{param.base}}/"
+    },
+    {
+      "id": "input",
+      "do": "download",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Download input spreadsheet"
+        },
+        "fallbacks": []
+      },
+      "saveAs": "input.csv"
+    },
+    {
+      "id": "start",
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "button",
+          "name": "Start"
+        },
+        "fallbacks": []
+      }
+    }
+  ],
+  "item": [
+    {
+      "id": "studio",
+      "do": "goto",
+      "url": "{{param.base}}/studio"
+    },
+    {
+      "id": "prompt",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Prompt']/following::textarea[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Prompt}}"
+    },
+    {
+      "id": "generate",
+      "note": "Queues a generation job: costs time, changes no data, so it is not the commit.",
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "button",
+          "name": "Generate"
+        },
+        "fallbacks": []
+      }
+    },
+    {
+      "id": "ready",
+      "do": "wait",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Download"
+        },
+        "fallbacks": []
+      },
+      "timeoutMs": 900000
+    },
+    {
+      "id": "asset",
+      "do": "download",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Download"
+        },
+        "fallbacks": []
+      },
+      "saveAs": "{{item.Slug}}.png",
+      "timeoutMs": 900000
+    },
+    {
+      "id": "form",
+      "do": "goto",
+      "url": "{{param.base}}/round"
+    },
+    {
+      "id": "first",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='First Name']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.First Name}}"
+    },
+    {
+      "id": "last",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Last Name']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Last Name}}"
+    },
+    {
+      "id": "email",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Email']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Email}}"
+    },
+    {
+      "id": "company",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Company']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Company}}"
+    },
+    {
+      "id": "role",
+      "do": "select",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Role']/following::select[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Role}}"
+    },
+    {
+      "id": "date",
+      "do": "fill",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//label[normalize-space()='Start Date']/following::input[1]"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Start Date}}"
+    },
+    {
+      "id": "phone",
+      "do": "fill",
+      "target": {
+        "frame": "iframe[title=\"Phone\"]",
+        "primary": {
+          "by": "role",
+          "role": "textbox",
+          "name": "Phone number"
+        },
+        "fallbacks": []
+      },
+      "value": "{{item.Phone}}"
+    },
+    {
+      "id": "terms",
+      "do": "check",
+      "target": {
+        "primary": {
+          "by": "xpath",
+          "xpath": "//input[@type='checkbox'][following-sibling::node()[normalize-space()][1][normalize-space()='I accept the terms']]"
+        },
+        "fallbacks": []
+      },
+      "checked": true
+    },
+    {
+      "id": "submit",
+      "commit": true,
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "button",
+          "name": "Submit"
+        },
+        "fallbacks": []
+      },
+      "onDialog": "accept"
+    },
+    {
+      "id": "verify",
+      "note": "The page answers \"Accepted: <email>\" or \"Rejected: <reason>\" after a random delay.",
+      "do": "expect",
+      "text": "Accepted: {{item.Email}}",
+      "timeoutMs": 5000
+    }
+  ],
+  "teardown": [
+    {
+      "id": "results",
+      "do": "goto",
+      "url": "{{param.base}}/results"
+    },
+    {
+      "id": "page1",
+      "do": "extract",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "table",
+          "name": "Accepted entries"
+        },
+        "fallbacks": []
+      },
+      "saveAs": "results-1.csv"
+    },
+    {
+      "id": "next",
+      "do": "click",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "link",
+          "name": "Next"
+        },
+        "fallbacks": []
+      }
+    },
+    {
+      "id": "page2",
+      "do": "extract",
+      "target": {
+        "primary": {
+          "by": "role",
+          "role": "table",
+          "name": "Accepted entries"
+        },
+        "fallbacks": []
+      },
+      "saveAs": "results-2.csv"
+    },
+    {
+      "id": "score",
+      "do": "goto",
+      "url": "{{param.base}}/score"
+    },
+    {
+      "id": "no-duplicates",
+      "do": "expect",
+      "text": "Duplicate submissions: 0"
+    }
+  ]
+}

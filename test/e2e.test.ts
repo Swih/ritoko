@@ -12,7 +12,7 @@ import { download } from '../src/engine/download.ts'
 import { Ledger } from '../src/engine/ledger.ts'
 import { candidates, resolve as locate } from '../src/engine/locate.ts'
 import { Runner } from '../src/engine/runner.ts'
-import type { Selector } from '../src/engine/schema.ts'
+import { type Selector, Workflow } from '../src/engine/schema.ts'
 import { Store } from '../src/engine/store.ts'
 import { lab } from './support/lab.ts'
 
@@ -29,15 +29,15 @@ const outcome = (o: { status: string; error?: string; snapshot?: string }) =>
 ${o.snapshot?.slice(0, 800)}`
     : o.status
 
-async function fixture(count = 3, broken = false) {
+/** A temporary home with a headless Chrome profile, torn down after the test together with `stop` (the site). */
+function harness(stop: () => Promise<void>) {
   const root = mkdtempSync(join(tmpdir(), 'ritoko-e2e-'))
-  const site = await lab()
   const ledger = new Ledger(join(root, 'ritoko.db'))
   const store = new Store(join(root, 'workflows'))
   const browser = new Browser({ profile: join(root, 'profile'), headless: true })
   cleanup.push(async () => {
     await browser.shutdown().catch(() => {})
-    await site.close()
+    await stop()
     ledger.db.close()
     // Chrome exits asynchronously and may briefly retain profile files on Windows.
     if (!root.startsWith(join(tmpdir(), 'ritoko-e2e-'))) throw new Error('Unsafe cleanup path')
@@ -51,6 +51,12 @@ async function fixture(count = 3, broken = false) {
     }
     throw new Error(`Chrome did not release the test profile: ${root}`)
   })
+  return { root, ledger, store, browser }
+}
+
+async function fixture(count = 3, broken = false) {
+  const site = await lab()
+  const { root, ledger, store, browser } = harness(() => site.close())
   const input = join(root, 'input.csv')
   writeFileSync(
     input,
@@ -591,4 +597,53 @@ describe('Chrome and real server effects', () => {
       f.site.release()
     }
   })
+
+  it('replays the Ritoko Challenge: a rejected row is held, a rerun resends nothing, a clean batch extracts', async () => {
+    // The local challenge server in its own process: seven rows, short AI jobs and delays.
+    const server = spawn(
+      process.execPath,
+      ['challenge/server.mjs', '--port', '0', '--rows', '7', '--job', '0.2-0.4', '--latency', '30-80'],
+      { cwd: resolve('.'), stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+    )
+    const [line] = (await once(server.stdout, 'data')) as [Buffer]
+    const url = line.toString().match(/http:\/\/\S+/)?.[0] ?? ''
+    const stats = async () => (await fetch(`${url}/api/stats`)).json()
+    const { root, ledger, store, browser } = harness(async () => {
+      server.kill()
+    })
+    const runner = new Runner(browser, ledger, store, join(root, 'runs'))
+    const example = JSON.parse(readFileSync('examples/ritoko-challenge.json', 'utf8'))
+    // Until the engine accepts long timeouts and templated saveAs, replay the equivalent shorter variant.
+    const saved = Workflow.safeParse(example).success
+      ? example
+      : JSON.parse(
+          JSON.stringify(example)
+            .replaceAll('900000', '120000')
+            .replaceAll('{{item.Slug}}.png', 'render.png'),
+        )
+    await store.save(saved)
+
+    const first = await runner.start(saved.name, { base: url })
+    expect(outcome(first)).toBe('partial')
+    expect(first.report.counts).toEqual({ done: 6, review: 1 })
+    expect(first.report.items.find((i) => i.status === 'review')?.key).toContain('-at-')
+    expect(await stats()).toMatchObject({ submissions: 7, accepted: 6, duplicates: 0, downloads: 7 })
+    const again = await runner.start(saved.name, { base: url })
+    expect(again.report.counts).toEqual({ skipped: 6, review: 1 })
+    expect(await stats()).toMatchObject({ submissions: 7, duplicates: 0 })
+
+    // Same site without the bad row, as a new workflow name so that the journal starts clean.
+    await fetch(`${url}/api/reset?clean`, { method: 'POST' })
+    await store.save({ ...saved, name: 'ritoko-challenge-clean' })
+    const clean = await runner.start('ritoko-challenge-clean', { base: url })
+    expect(outcome(clean)).toBe('done')
+    expect(clean.report.counts).toEqual({ done: 7 })
+    expect(await stats()).toMatchObject({ submissions: 7, accepted: 7, duplicates: 0, successRate: 100 })
+    const results = ['results-1.csv', 'results-2.csv'].map((name) =>
+      readFileSync(clean.report.files[name] as string, 'utf8')
+        .trim()
+        .split('\n'),
+    )
+    expect(results.map((r) => r.length - 1)).toEqual([5, 2])
+  }, 120_000)
 })

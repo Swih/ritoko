@@ -11,19 +11,21 @@
     "ritoko": "dist/cli.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "scripts": {
     "build": "tsdown",
     "check": "biome check . && tsc --noEmit",
     "fix": "biome check --write .",
-    "test": "vitest run",
+    "test": "vitest run --configLoader native",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts --configLoader native",
     "mcp": "node src/cli.ts mcp",
     "ritoko": "node src/cli.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
-    "playwright-core": "^1.63.0",
+    "playwright-core": "1.63.0",
     "read-excel-file": "^9.3.10",
     "zod": "^4.6.5"
   },

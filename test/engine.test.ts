@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseCsv } from '../src/engine/items.ts'
 import { Ledger } from '../src/engine/ledger.ts'
-import { Workflow } from '../src/engine/schema.ts'
+import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
 import { check } from '../src/engine/store.ts'
 import { render } from '../src/engine/template.ts'
 
@@ -31,7 +31,7 @@ describe('parseCsv', () => {
   })
 })
 
-const wf = (patch: Partial<Workflow> = {}) =>
+const wf = (patch: Partial<WorkflowInput> = {}) =>
   Workflow.parse({
     name: 'demo',
     description: 'demo',
@@ -67,11 +67,10 @@ describe('check', () => {
       'not downloaded',
     )
   })
-  it('warns when nothing is verified or committed', () => {
-    const warnings = check(
-      wf({ item: [wf().item[1] as Workflow['item'][number]].map((s) => ({ ...s, commit: false })) }),
-    )
-    expect(warnings.join()).toMatch(/expect.*commit/s)
+  it('refuses a write batch without a commit or verification', () => {
+    expect(() =>
+      check(wf({ item: [wf().item[1] as Workflow['item'][number]].map((s) => ({ ...s, commit: false })) })),
+    ).toThrow('commit')
   })
 })
 

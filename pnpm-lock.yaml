@@ -12,7 +12,7 @@ importers:
         specifier: ^1.31.0
         version: 1.31.0(zod@4.6.5)
       playwright-core:
-        specifier: ^1.63.0
+        specifier: 1.63.0
         version: 1.63.0
       read-excel-file:
         specifier: ^9.3.10

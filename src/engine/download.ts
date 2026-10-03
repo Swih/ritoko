@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
+import { basename, extname, join, win32 } from 'node:path'
 import type { Download, Locator, Page } from 'playwright-core'
 
 /**
@@ -17,42 +18,76 @@ export async function download(page: Page, trigger: Locator, dir: string, saveAs
 
   if (href) {
     const response = await page.request.get(href)
-    if (!response.ok()) throw new Error(`Download failed: HTTP ${response.status()} for ${href}`)
-    const disposition = response
-      .headers()
-      ['content-disposition']?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)/i)?.[1]
-    const file = join(dir, name(saveAs, decodeURIComponent(disposition ?? basename(new URL(href).pathname))))
-    await writeFile(file, await response.body())
-    return file
+    try {
+      if (!response.ok()) throw new Error(`Download failed: HTTP ${response.status()} for ${href}`)
+      const disposition = response
+        .headers()
+        ['content-disposition']?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)/i)?.[1]
+      const file = destination(
+        dir,
+        saveAs,
+        decodeURIComponent(disposition ?? basename(new URL(href).pathname)),
+      )
+      await writeFile(file, await response.body(), { flag: 'wx' })
+      return file
+    } finally {
+      await response.dispose()
+    }
   }
 
-  const [event] = await Promise.all([anyTabDownload(page), trigger.click()])
-  const file = join(dir, name(saveAs, event.suggestedFilename()))
-  await event.saveAs(file)
-  return file
+  const waiting = anyTabDownload(page)
+  try {
+    const [event] = await Promise.all([waiting.promise, trigger.click()])
+    const file = destination(dir, saveAs, event.suggestedFilename())
+    await event.saveAs(file)
+    return file
+  } finally {
+    waiting.cancel()
+  }
 }
 
 /** Keeps the real extension (e.g. .xlsx) when saveAs has none: input readers rely on it. */
-function name(saveAs: string | undefined, suggested: string): string {
-  if (!saveAs) return suggested
-  return extname(saveAs) ? saveAs : saveAs + extname(suggested)
+export function destination(dir: string, saveAs: string | undefined, suggested: string): string {
+  const safe = basename(win32.basename(suggested))
+    .replace(/[<>:"|?*\x00-\x1f]/g, '_')
+    .replace(/[. ]+$/, '')
+  if (
+    saveAs &&
+    (saveAs !== basename(win32.basename(saveAs)) ||
+      /[<>:"|?*\x00-\x1f]/.test(saveAs) ||
+      /^[. ]+$/.test(saveAs))
+  )
+    throw new Error('saveAs must be a plain filename, without directories or reserved characters')
+  const requested = saveAs || safe || 'download'
+  const name = extname(requested) ? requested : requested + extname(safe)
+  // A unique prefix also avoids Windows device names and overwriting earlier evidence.
+  return join(dir, `${randomUUID()}-${name}`)
 }
 
-function anyTabDownload(page: Page, timeout = 30_000): Promise<Download> {
+function anyTabDownload(page: Page, timeout = 30_000): { promise: Promise<Download>; cancel: () => void } {
   const context = page.context()
-  return new Promise((resolve, reject) => {
-    const onPage = (p: Page) => p.once('download', done)
-    const timer = setTimeout(() => finish(() => reject(new Error('No download started'))), timeout)
-    function finish(settle: () => void) {
+  let cancel = () => {}
+  const promise = new Promise<Download>((resolve, reject) => {
+    const watched = new Set<Page>()
+    const onPage = (p: Page) => {
+      watched.add(p)
+      p.once('download', done)
+    }
+    const timer = setTimeout(() => {
+      cancel()
+      reject(new Error('No download started'))
+    }, timeout)
+    cancel = () => {
       clearTimeout(timer)
       context.off('page', onPage)
-      page.off('download', done)
-      settle()
+      for (const p of watched) p.off('download', done)
     }
     function done(d: Download) {
-      finish(() => resolve(d))
+      cancel()
+      resolve(d)
     }
-    page.once('download', done)
+    for (const p of context.pages()) onPage(p)
     context.on('page', onPage)
   })
+  return { promise, cancel: () => cancel() }
 }

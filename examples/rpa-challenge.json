@@ -157,7 +157,8 @@
       "target": {
         "primary": {
           "by": "text",
-          "text": "Your success rate is 100%"
+          "text": "Your success rate is 100%",
+          "exact": false
         },
         "fallbacks": []
       }

@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { paths } from './paths.ts'
 import { type Step, Target, Workflow, type WorkflowInput } from './schema.ts'
@@ -24,6 +25,7 @@ export class Store {
   }
 
   async get(name: string): Promise<Workflow> {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) throw new Error('Invalid workflow name')
     const raw = await readFile(join(this.dir, `${name}.json`), 'utf8').catch(() => {
       throw new Error(`Unknown workflow "${name}"`)
     })
@@ -37,7 +39,14 @@ export class Store {
     const workflow = { ...parsed, version: (previous?.version ?? 0) + 1 }
     const warnings = check(workflow)
     await mkdir(this.dir, { recursive: true })
-    await writeFile(join(this.dir, `${workflow.name}.json`), `${JSON.stringify(workflow, null, 2)}\n`)
+    const file = join(this.dir, `${workflow.name}.json`)
+    const temporary = `${file}.${randomUUID()}.tmp`
+    try {
+      await writeFile(temporary, `${JSON.stringify(workflow, null, 2)}\n`, { flag: 'wx' })
+      await rename(temporary, file)
+    } finally {
+      await rm(temporary, { force: true })
+    }
     return { workflow, warnings }
   }
 
@@ -58,6 +67,32 @@ export function check(wf: Workflow): string[] {
   const dup = ids.filter((id, i) => ids.indexOf(id) !== i)
   if (dup.length) throw new Error(`Duplicate step ids: ${dup.join(', ')}`)
   if (wf.item.length && !wf.items) throw new Error('"item" steps need an "items" source')
+  if (wf.items && !wf.item.length) throw new Error('A batch needs item steps')
+  for (const s of all) {
+    if (s.do === 'expect' && !s.target && s.text === undefined && s.value === undefined && !s.url)
+      throw new Error(`${s.id}: expect needs a target, text, value or URL`)
+    if (s.do === 'expect' && s.text !== undefined && !s.text.trim())
+      throw new Error(`${s.id}: expect text must not be empty`)
+    if (s.do === 'expect' && s.value !== undefined && !s.target)
+      throw new Error(`${s.id}: value verification needs a target`)
+    if (s.commit && !['click', 'press', 'upload'].includes(s.do))
+      throw new Error(`${s.id}: only click, press or upload may be a commit`)
+  }
+  if ([...wf.setup, ...wf.teardown].some((s) => s.commit))
+    throw new Error('Commit steps belong in item, never setup or teardown')
+  const commits = wf.item.filter((s) => s.commit)
+  if (commits.length > 1) throw new Error('Only one commit is supported per item')
+  if (wf.readOnly && commits.length) throw new Error('A read-only workflow cannot contain a commit')
+  if (wf.item.length && !wf.readOnly && commits.length !== 1)
+    throw new Error('A write batch needs one commit; use readOnly for exports or reads')
+  const commitIndex = wf.item.findIndex((s) => s.commit)
+  const checks = wf.item.slice(commitIndex + 1).filter((s) => s.do === 'expect')
+  if (wf.item.length && !checks.length) throw new Error('An item needs an expect after its commit')
+  if (
+    commitIndex >= 0 &&
+    wf.item.slice(commitIndex + 1).some((s) => !['expect', 'wait', 'download'].includes(s.do))
+  )
+    throw new Error('Only verification, waiting or downloading is allowed after commit')
 
   const files = new Set<string>()
   const verify = (template: string, where: string, itemAllowed: boolean) => {
@@ -73,6 +108,7 @@ export function check(wf: Workflow): string[] {
       for (const field of ['url', 'value', 'file', 'text'] as const)
         if (field in s && typeof s[field as keyof Step] === 'string')
           verify(s[field as keyof Step] as string, s.id, itemAllowed)
+      if ('target' in s && s.target) verify(JSON.stringify(s.target), s.id, itemAllowed)
       if (s.do === 'download') files.add(s.saveAs)
     }
   }
@@ -80,6 +116,9 @@ export function check(wf: Workflow): string[] {
   if (wf.items) {
     verify(wf.items.from, 'items.from', false)
     verify(wf.items.key, 'items.key', true)
+    verify(wf.items.scope, 'items.scope', false)
+    if (references(wf.items.scope).some((r) => r.ns !== 'param'))
+      throw new Error('items.scope may only reference params describing the destination/account/operation')
   }
   walk(wf.item, true)
   walk(wf.teardown, false)

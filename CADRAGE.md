@@ -1,16 +1,17 @@
 # Ritoko — cadrage (3 oct. 2026)
 
 ## Promesse
-Transformer une tâche web qu'un agent (Claude Code, Codex) a réussie une fois en **procédure réutilisable** : nouveaux inputs (Excel/CSV), résultat vérifié, reprise après interruption sans doublon, rapport par item. Si la procédure casse, le LLM répare puis le lot reprend.
+Transformer une tâche web réussie par un agent en **procédure réutilisable** : nouveaux inputs, résultat vérifié, reprise et rapport par item. Toute soumission incertaine reste bloquée jusqu'à vérification, y compris dans les runs suivants. Si un sélecteur casse, le LLM répare la cible du run figé.
 
 ## Cible
 Utilisateurs réguliers de Claude Code (terminal) et Codex CLI ayant une tâche web récurrente : builders, indés, petites équipes.
 
 ## Principes
-- Un seul navigateur : le Chrome piloté par Ritoko (profil dédié `~/.ritoko/profile`, sessions conservées). On enregistre là où on rejoue.
+- Chrome avec profil dédié, sessions conservées et connexion CDP locale partagée. Un verrou sérialise les opérations CLI/MCP et récupère les processus morts.
 - Le LLM explore, choisit les sélecteurs et répare. Le moteur rejoue sans LLM.
 - Sélecteurs robustes : rôle/nom accessible > label > texte visible ancré > testid > CSS/XPath relatif. Jamais d'id généré, de XPath absolu ou de position. Chaque élément a un sélecteur principal + des secours, vérifiés uniques à l'enregistrement.
 - Vérification explicite (`expect`) ; étape `commit` = point de non-retour. Interruption après un commit → item « à vérifier », jamais relancé à l'aveugle.
+- Chaque run conserve son workflow et ses lignes d'entrée. Avant commit, reprise depuis le début du formulaire ; après commit, vérification seule sur le même document, sinon review. La première ligne soumise pendant l'enregistrement est adoptée avant replay.
 - Le moins de complexité possible : on réutilise l'existant (Playwright, MCP SDK, node:sqlite).
 
 ## Stack

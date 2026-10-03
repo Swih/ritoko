@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
 import { Browser } from './engine/browser.ts'
 import { Ledger } from './engine/ledger.ts'
@@ -9,9 +10,12 @@ const USAGE = `ritoko <command>
 
   mcp                                    start the MCP server (stdio), used by agent plugins
   list                                   saved workflows
+  import <workflow.json>                  validate and save a workflow
   run <workflow> [--param k=v]… [--repeat] [--headless]
   resume <runId> [--headless]
   report [runId]                         latest run if omitted
+  resolve <runId> <key> done|failed --note "site check"
+  browser-close                          close Ritoko's Chrome explicitly
 
 Workflows and runs live in ${paths.workflows} and ${paths.runs}.`
 
@@ -22,6 +26,7 @@ const { positionals, values } = parseArgs({
     repeat: { type: 'boolean', default: false },
     headless: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
+    note: { type: 'string' },
   },
 })
 if (values.headless) process.env.RITOKO_HEADLESS = '1'
@@ -44,12 +49,25 @@ function print(outcome: Outcome): void {
     )
   if (report.message && outcome.status !== 'needs_repair') console.log(report.message)
   console.log(`Evidence: ${report.dir}`)
+  if (outcome.status !== 'done') process.exitCode = 2
 }
 
 try {
-  switch (command) {
+  switch (values.help ? undefined : command) {
     case 'list':
       for (const w of await runner.store.list()) console.log(`${w.name}  v${w.version}  ${w.description}`)
+      break
+    case 'import':
+      if (!arg) throw new Error('import needs a workflow JSON path')
+      console.log(
+        JSON.stringify(
+          await runner.ledger.exclusive(async () =>
+            runner.store.save(JSON.parse(await readFile(arg, 'utf8'))),
+          ),
+          null,
+          2,
+        ),
+      )
       break
     case 'run': {
       if (!arg) throw new Error('run needs a workflow name')
@@ -73,6 +91,16 @@ try {
       console.log(JSON.stringify(runner.report(id), null, 2))
       break
     }
+    case 'resolve': {
+      const [, runId, key, status] = positionals
+      if (!runId || !key || (status !== 'done' && status !== 'failed') || !values.note)
+        throw new Error('resolve needs <runId> <key> done|failed --note "what was checked on the site"')
+      console.log(JSON.stringify(await runner.resolve(runId, key, status, values.note), null, 2))
+      break
+    }
+    case 'browser-close':
+      await runner.ledger.exclusive(async () => browser.shutdown())
+      break
     default:
       console.log(USAGE)
   }
@@ -81,4 +109,5 @@ try {
   process.exitCode = 1
 } finally {
   await browser.close()
+  runner.ledger.db.close()
 }

@@ -28,6 +28,7 @@ const base = {
   note: z.string().optional(),
   /** Point of no return: once started, an interrupted item is never replayed blindly. */
   commit: z.boolean().optional(),
+  timeoutMs: z.number().int().positive().max(120_000).optional(),
 }
 
 export const Step = z.discriminatedUnion('do', [
@@ -64,6 +65,8 @@ export const Workflow = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'kebab-case'),
   version: z.number().int().positive().default(1),
   description: z.string(),
+  /** Explicitly opt in for batches that never change data on the target site. */
+  readOnly: z.boolean().default(false),
   params: z
     .record(
       z.string(),
@@ -81,6 +84,9 @@ export const Workflow = z.object({
       sheet: z.union([z.string(), z.number()]).optional(),
       /** Business identity of an item, e.g. "{{item.Email}}". Must be unique in the batch. */
       key: z.string(),
+      /** Destination/account/operation identity. Input file paths must not be used here. */
+      scope: z.string().default(''),
+      required: z.array(z.string().min(1)).default([]),
     })
     .optional(),
   setup: z.array(Step).default([]),

@@ -1,7 +1,7 @@
 {
   "name": "ritoko",
   "version": "0.1.0",
-  "description": "Turn a browser task your agent solved once into a reliable, resumable procedure: rerun it with new data, verified, without double submission.",
+  "description": "Record browser procedures, replay new data, verify results and hold uncertain submissions for review.",
   "author": {
     "name": "Swih",
     "url": "https://github.com/Swih"
@@ -19,10 +19,9 @@
   ],
   "mcpServers": {
     "ritoko": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "-y",
-        "ritoko@0.1.0",
+        "${CLAUDE_PLUGIN_ROOT}/bin/ritoko.mjs",
         "mcp"
       ]
     }

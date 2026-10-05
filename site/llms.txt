@@ -1,0 +1,27 @@
+# Ritoko
+
+> Ritoko is an open-source (MIT) local MCP server, Claude Code and Codex plugin, and command-line tool. Your agent solves a browser, HTTP API or MCP task once; Ritoko saves it as a JSON workflow and replays it on the rows of a CSV or Excel file, keeping a journal for each item.
+
+Scope, stated plainly:
+
+- Replaying saved deterministic steps with the direct runner makes no model call. The first run, repairs, reading new documents and any MCP tool that itself calls a model still use one. In host mode your agent’s own tools do the work.
+- Every item has an outcome in a local SQLite journal. A write whose outcome is uncertain is held for review, not resubmitted automatically.
+- The journal only covers actions run through this installation and cannot see submissions made elsewhere. Ritoko does not promise “no duplicates”: that needs a correct business key, commit step and result check in the workflow.
+- No built-in OCR, and no CAPTCHA or anti-bot bypass. Requires Node.js 24 or newer, and Google Chrome for browser workflows with the direct runner.
+
+## Documentation
+
+- [README](https://github.com/Swih/ritoko#readme): install, how it works, evidence and current scope
+- [Advanced usage](https://github.com/Swih/ritoko/blob/main/docs/usage.md): client setup, CLI, browser choice, host mode and recovery
+- [Agent skill](https://github.com/Swih/ritoko/blob/main/skills/ritoko/SKILL.md): the instructions the plugin gives the agent
+- [Source code and issues](https://github.com/Swih/ritoko): bug reports and feature requests
+
+## On this site
+
+- [Use cases](https://ritoko.com/use-cases): six use cases: one measured run, one recorded run and four described patterns
+- [Watch a real run](https://ritoko.com/watch): a real-time recording of an interrupted batch, resumed and run again
+- [Measurements](https://ritoko.com/benchmarks): the RPA Challenge timings and the crash-and-resume test, with their boundaries
+
+## License
+
+- [MIT license](https://github.com/Swih/ritoko/blob/main/LICENSE)

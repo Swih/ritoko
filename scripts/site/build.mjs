@@ -1,9 +1,21 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cases } from '../../site/cases.js'
 import { benchmarks } from './benchmarks.mjs'
 import { casePages } from './content.mjs'
+import { loadPages } from './pages/collect.mjs'
+import {
+  copy,
+  homeProblems,
+  llmsFullTxt,
+  llmsTxt,
+  navLinks,
+  renderFaq,
+  renderGuide,
+  renderIndex,
+  sitemapXml,
+} from './render.mjs'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const site = resolve(root, 'site')
@@ -28,26 +40,73 @@ const organization = {
   email,
   sameAs: ['https://github.com/Swih/ritoko'],
 }
-const head = (title, description, route = '', structured = [], noindex = false) => `<!doctype html>
-<html lang="en" data-theme="dark"><head>
+// Last-modified date of every page that is not generated from page data (home, use cases, watch, benchmarks,
+// contact, privacy). It is the <lastmod> in sitemap.xml. Bump it when the content of those pages changes.
+// Guides, comparisons and the FAQ carry their own dateModified. The home page also takes the date of the
+// newest guide, because it lists the guides.
+const siteModified = '2026-10-04'
+// Pages built from scripts/site/pages/*. SITE_SAMPLES=1 adds the sample entries (never commit that output).
+const content = await loadPages({ samples: process.env.SITE_SAMPLES === '1' })
+
+const altLink = ({ hreflang, href }) => `<link rel="alternate" hreflang="${hreflang}" href="${href}">`
+const localeAlternate = (other) => {
+  if (!other) return ''
+  return `<meta property="og:locale:alternate" content="${copy[other.hreflang].locale}">`
+}
+const articleMeta = (article) => {
+  if (!article) return ''
+  return `<meta property="article:published_time" content="${article.published}"><meta property="article:modified_time" content="${article.modified}">`
+}
+// options: lang, alternates ([{ hreflang, href }]) and article ({ published, modified }) for generated pages.
+const head = (title, description, route = '', structured = [], noindex = false, options = {}) => {
+  const { lang = 'en', alternates = [], article } = options
+  const text = copy[lang]
+  const other = alternates.find((alt) => alt.hreflang !== lang && alt.hreflang !== 'x-default')
+  return `<!doctype html>
+<html lang="${lang}" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${route === 'contact' ? '<meta name="referrer" content="no-referrer">' : ''}
 <title>${title}</title><meta name="description" content="${description}">
-<link rel="canonical" href="https://ritoko.com/${route}">
+<link rel="canonical" href="https://ritoko.com/${route}">${alternates.map(altLink).join('')}
 <meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-video-preview:-1'}">
 <meta name="color-scheme" content="dark light"><meta name="theme-color" content="#14130f">
 <link rel="icon" href="/favicon.ico" sizes="16x16 24x24 32x32 48x48 64x64 128x128 256x256">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<meta property="og:type" content="website"><meta property="og:site_name" content="Ritoko"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:url" content="https://ritoko.com/${route}"><meta property="og:image" content="https://ritoko.com/assets/og-cadence.png"><meta name="twitter:card" content="summary_large_image">
-<meta property="og:locale" content="en_US"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Ritoko: a saved workflow and a journal of checked results"><meta name="twitter:title" content="${title}"><meta name="twitter:description" content="${description}"><meta name="twitter:image" content="${origin}/assets/og-cadence.png">
+<meta property="og:type" content="${article ? 'article' : 'website'}"><meta property="og:site_name" content="Ritoko"><meta property="og:title" content="${title}"><meta property="og:description" content="${description}"><meta property="og:url" content="https://ritoko.com/${route}"><meta property="og:image" content="https://ritoko.com/assets/og-cadence.png"><meta name="twitter:card" content="summary_large_image">
+<meta property="og:locale" content="${text.locale}">${localeAlternate(other)}${articleMeta(article)}<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="${text.ogAlt}"><meta name="twitter:title" content="${title}"><meta name="twitter:description" content="${description}"><meta name="twitter:image" content="${origin}/assets/og-cadence.png">
 ${jsonLd({ '@context': 'https://schema.org', '@graph': [organization, ...structured] })}
 <script>try{var t=localStorage.getItem('ritoko-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}document.querySelector('meta[name="theme-color"]').content=document.documentElement.dataset.theme==='light'?'#f4f0e6':'#14130f';</script>
 <link rel="preload" href="/assets/fonts/fraunces-normal-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="preload" href="/assets/fonts/manrope-normal-latin.woff2" as="font" type="font/woff2" crossorigin><link rel="stylesheet" href="/assets/fonts/fonts.css"><link rel="stylesheet" href="/styles.css"><script type="module" src="/main.js"></script>
-</head><body><a class="skip-link" href="#main">Skip to content</a>`
-const header = (active = 'home') =>
-  `<header class="site-header"><div class="wrap header-row">${brand}<nav class="site-nav" aria-label="Primary"><button class="nav-toggle" type="button" aria-controls="nav-list" aria-expanded="false">Menu <span aria-hidden="true">＋</span></button><ul id="nav-list"><li><a href="/#process">The process</a></li><li><a href="/use-cases" ${active === 'cases' ? 'aria-current="page"' : ''}>Use cases <span class="nav-count">06</span></a></li><li><a href="/contact" ${active === 'contact' ? 'aria-current="page"' : ''}>For businesses</a></li><li><a href="https://github.com/Swih/ritoko">GitHub ${arrow}</a></li></ul></nav><div class="header-actions">${theme}<a class="button button-small" href="/#install">Install ${arrow}</a></div></div></header>`
-const footer = () =>
-  `<footer class="site-footer"><div class="wrap"><div class="footer-top"><p>One good run. <br>Every next row.</p><a class="text-link" href="https://github.com/Swih/ritoko">Make it yours ${arrow}</a></div><div class="footer-wordmark" aria-hidden="true">Ritoko${mark()}</div><div class="footer-bottom"><span>Local workflows. Lasting memory.</span><a href="/contact">A workflow to automate? ${arrow}</a><a href="/benchmarks">Measurements</a><a href="https://github.com/Swih/ritoko/blob/main/LICENSE">Open source · MIT</a><a href="/privacy">Privacy</a><span>© 2026 Swih</span></div></div></footer></body></html>`
+</head><body><a class="skip-link" href="#main">${text.skip}</a>`
+}
+const caseCount = String(casePages.length).padStart(2, '0')
+const navItem = (href, label, current) =>
+  `<li><a href="${href}"${current ? ' aria-current="page"' : ''}>${label}</a></li>`
+// The shared page chrome is English. On a French page it is marked lang="en" for screen readers.
+const chromeLang = (lang) => (lang === 'en' ? '' : ' lang="en"')
+const header = (active = 'home', lang = 'en') => {
+  const nav = navLinks(content, lang)
+  const guides = nav.guides ? navItem(nav.guides, 'Guides', active === 'guides') : ''
+  const compare = nav.compare ? navItem(nav.compare, 'Compare', active === 'compare') : ''
+  const more = guides || compare ? ' has-more' : ''
+  return `<header class="site-header${more}"${chromeLang(lang)}><div class="wrap header-row">${brand}<nav class="site-nav" aria-label="Primary"><button class="nav-toggle" type="button" aria-controls="nav-list" aria-expanded="false">Menu <span aria-hidden="true">＋</span></button><ul id="nav-list"><li><a href="/#process">The process</a></li><li><a href="/use-cases" ${active === 'cases' ? 'aria-current="page"' : ''}>Use cases <span class="nav-count">${caseCount}</span></a></li>${guides}${compare}<li><a href="/contact" ${active === 'contact' ? 'aria-current="page"' : ''}>For businesses</a></li><li><a href="https://github.com/Swih/ritoko">GitHub ${arrow}</a></li></ul></nav><div class="header-actions">${theme}<a class="button button-small" href="/#install">Install ${arrow}</a></div></div></header>`
+}
+// Links to the generated collections, shown only for pages that exist, plus a way into the other language.
+const footerLinks = (lang) => {
+  const nav = navLinks(content, lang)
+  const links = []
+  if (nav.guides) links.push(`<a href="${nav.guides}">Guides</a>`)
+  if (nav.compare) links.push(`<a href="${nav.compare}">Compare</a>`)
+  if (nav.faq) links.push(`<a href="${nav.faq}">FAQ</a>`)
+  if (nav.language) {
+    const { href, lang: code, label } = nav.language
+    links.push(`<a href="${href}" hreflang="${code}" lang="${code}">${label}</a>`)
+  }
+  if (links.length === 0) return ''
+  return `<nav class="footer-links" aria-label="Guides and answers">${links.join('')}</nav>`
+}
+const footer = (lang = 'en') =>
+  `<footer class="site-footer"${chromeLang(lang)}><div class="wrap"><div class="footer-top"><p>One good run. <br>Every next row.</p><a class="text-link" href="https://github.com/Swih/ritoko">Make it yours ${arrow}</a></div><div class="footer-wordmark" aria-hidden="true">Ritoko${mark()}</div>${footerLinks(lang)}<div class="footer-bottom"><span>Local workflows. Lasting memory.</span><a href="/contact">A workflow to automate? ${arrow}</a><a href="/benchmarks">Measurements</a><a href="https://github.com/Swih/ritoko/blob/main/LICENSE">Open source · MIT</a><a href="/privacy">Privacy</a><span>© 2026 Swih</span></div></div></footer></body></html>`
 const rows = () =>
   Array.from(
     { length: 10 },
@@ -106,11 +165,10 @@ const videoSchema = {
   creator: { '@id': `${origin}/#organization` },
 }
 
-const snapshot = resolve(root, 'design/site-before-2026-10-03')
-if (!existsSync(snapshot)) {
-  mkdirSync(snapshot, { recursive: true })
-  for (const name of ['index.html', 'styles.css', 'main.js', '404.html'])
-    copyFileSync(resolve(site, name), resolve(snapshot, name))
+const homeFaqLink = () => {
+  const href = navLinks(content, 'en').faq
+  if (!href) return ''
+  return `<a class="text-link" href="${href}">${copy.en.allQuestions} ${arrow}</a>`
 }
 
 // The static pages share authored markup; no framework or build step is needed to serve them.
@@ -168,10 +226,10 @@ ${header()}
   )
   .join('')}</div></div></section>
 
-<section class="section journal-section" id="safety"><div class="wrap journal-layout"><div><p class="overline">03 / LASTING MEMORY</p><h2>A crash stops the run. <br><em>Not its memory.</em></h2><p>Every item has an outcome. On resume, the journal decides what can run and what needs a human check.</p><a class="text-link" href="/use-cases#resume">Watch the real crash &amp; resume ${arrow}</a><p class="small journal-boundary">The journal covers actions executed through this Ritoko installation. Each workflow supplies checks that prove its business result.</p></div><div class="memory-ledger"><div class="pane-label"><span>AFTER AN INTERRUPTION</span><span class="mono">run / 001</span></div><div class="memory-row"><span class="state done">done</span><span><strong>Verified. Kept.</strong><small>These rows are not submitted again.</small></span><span>04</span></div><div class="memory-row"><span class="state review">review</span><span><strong>Uncertain. Held.</strong><small>Check the site before resolving this item.</small></span><span>01</span></div><div class="memory-row"><span class="state pending">pending</span><span><strong>Not started. Ready.</strong><small>The remaining work can continue.</small></span><span>05</span></div><p><span class="status-dot"></span> Resume from the journal, not from zero.</p></div></div></section>
+<section class="section journal-section" id="safety"><div class="wrap journal-layout"><div><p class="overline">03 / LASTING MEMORY</p><h2>A crash stops the run. <br><em>Not its memory.</em></h2><p>Every item has an outcome. On resume, the journal decides what can run and what needs a human check.</p><a class="text-link" href="/use-cases#resume">Watch the real crash &amp; resume ${arrow}</a><p class="small journal-boundary">The journal covers actions executed through this Ritoko installation. Each workflow supplies checks that prove its business result.</p></div><div class="memory-ledger"><div class="pane-label"><span>AFTER AN INTERRUPTION</span><span class="mono">run / 001</span></div><div class="memory-row"><span class="state done">done</span><span><strong>Verified. Kept.</strong><small>These rows are not submitted again.</small></span><span>04</span></div><div class="memory-row"><span class="state review">review</span><span><strong>Uncertain. Held.</strong><small>Check the site before resolving this item.</small></span><span>01</span></div><div class="memory-row"><span class="state pending">pending</span><span><strong>Not started. Ready.</strong><small>The remaining work can continue.</small></span><span>05</span></div><p><span class="status-dot"></span> Resume from the journal, not from zero.</p></div></div></section>${homeProblems({ content, arrow })}
 ${install()}
 ${businessCta()}
-<section class="section faq-section"><div class="wrap faq-layout"><div><p class="overline">A FEW USEFUL ANSWERS</p><h2>Before you <br><em>press replay.</em></h2></div><div class="faq">${[
+<section class="section faq-section"><div class="wrap faq-layout"><div><p class="overline">A FEW USEFUL ANSWERS</p><h2>Before you <br><em>press replay.</em></h2>${homeFaqLink()}</div><div class="faq">${[
   [
     'Does every replay use AI?',
     'Deterministic browser, HTTP and MCP steps replay without a model. Your agent is involved in learning the task and repairing a changed workflow. Reading a new document with an agent or OCR service is a separate per-document step.',
@@ -261,31 +319,56 @@ writeFileSync(
   `${head('Website privacy — Ritoko', 'How Ritoko measures website use and how to choose whether to participate.', 'privacy')}${header('privacy')}<main id="main" tabindex="-1"><section class="editorial privacy-content wrap">${readFileSync(resolve(root, 'scripts/site/privacy.html'), 'utf8')}</section></main>${footer()}`,
 )
 
-const indexable = [
-  '',
-  'use-cases',
-  ...casePages.map((p) => `use-cases/${p.slug}`),
-  'watch',
-  'benchmarks',
-  'contact',
-  'privacy',
+// Everything generated from page data is rebuilt from scratch, so a page removed from the data (or left over
+// from a SITE_SAMPLES=1 build) leaves nothing behind.
+const generatedDirectories = ['guides', 'compare', 'fr/guides']
+const generatedFiles = [
+  'guides.html',
+  'compare.html',
+  'faq.html',
+  'fr/guides.html',
+  'fr/faq.html',
+  'llms.txt',
+  'llms-full.txt',
 ]
-writeFileSync(
-  resolve(site, 'sitemap.xml'),
-  `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${indexable.map((route) => `<url><loc>${origin}/${route}</loc></url>`).join('')}</urlset>\n`,
-)
+for (const path of generatedDirectories) rmSync(resolve(site, path), { recursive: true, force: true })
+for (const path of generatedFiles) rmSync(resolve(site, path), { force: true })
+try {
+  rmdirSync(resolve(site, 'fr'))
+} catch {
+  // The folder stays when it is not empty or does not exist.
+}
+const writePage = (route, html) => {
+  const file = resolve(site, `${route}.html`)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, html)
+}
+const renderContext = { head, header, footer, businessCta, origin, arrow, content }
+for (const entry of content.entries) {
+  if (entry.kind === 'faq') writePage(entry.route, renderFaq(renderContext, entry))
+  else if (entry.kind === 'index') writePage(entry.route, renderIndex(renderContext, entry))
+  else writePage(entry.route, renderGuide(renderContext, entry))
+}
+writeFileSync(resolve(site, 'llms.txt'), llmsTxt(origin, content))
+writeFileSync(resolve(site, 'llms-full.txt'), llmsFullTxt(origin, content))
+
+const pageModified = (route) => ({ route, lastmod: siteModified })
+const homeModified = [siteModified, ...content.guides.en.map((page) => page.dateModified)].sort().at(-1)
+const indexable = [
+  { route: '', lastmod: homeModified },
+  pageModified('use-cases'),
+  ...casePages.map((p) => pageModified(`use-cases/${p.slug}`)),
+  pageModified('watch'),
+  pageModified('benchmarks'),
+  pageModified('contact'),
+  pageModified('privacy'),
+  ...content.entries,
+]
+writeFileSync(resolve(site, 'sitemap.xml'), sitemapXml(origin, indexable))
 writeFileSync(
   resolve(site, 'video-sitemap.xml'),
   `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"><url><loc>${origin}/watch</loc><video:video><video:thumbnail_loc>${origin}/assets/media/poster.png</video:thumbnail_loc><video:title>Ritoko: interrupt a customer batch, resume and rerun</video:title><video:description>An actual local back-office recording. Ten unique submissions, nine verified customers and one uncertain item held for review.</video:description><video:content_loc>${origin}/assets/media/demo.mp4</video:content_loc><video:duration>34</video:duration><video:publication_date>2026-10-03T02:11:38.055Z</video:publication_date></video:video></url></urlset>\n`,
 )
-const inventory = indexable.map((route) => ({
-  url: `${origin}/${route}`,
-  file: route ? `${route}.html` : 'index.html',
-  indexable: true,
-}))
-mkdirSync(resolve(root, 'design/site-2026-10-03'), { recursive: true })
-writeFileSync(
-  resolve(root, 'design/site-2026-10-03/indexable-pages.json'),
-  `${JSON.stringify(inventory, null, 2)}\n`,
-)
-console.log(`Built ${indexable.length} indexable pages, contact confirmation, 404 and both sitemaps.`)
+const summary = `Built ${indexable.length} indexable pages (${content.entries.length} from page data), 404, both sitemaps and the llms files.`
+console.log(summary)
+if (content.samples) console.log('SITE_SAMPLES=1: the output includes sample pages. Do not commit it.')

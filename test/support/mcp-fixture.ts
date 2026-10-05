@@ -79,4 +79,10 @@ server.registerTool(
   },
 )
 
+server.registerTool(
+  'lookup',
+  { inputSchema: { message: z.string() }, annotations: { readOnlyHint: true } },
+  async ({ message }) => text(JSON.stringify({ echo: message })),
+)
+
 await server.connect(new StdioServerTransport())

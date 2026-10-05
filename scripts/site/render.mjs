@@ -154,13 +154,14 @@ const bodyCell = (html, first, rowHeaders) =>
   first && rowHeaders ? `<th scope="row">${html}</th>` : `<td>${html}</td>`
 const tableRow = (row, rowHeaders) =>
   `<tr>${row.map((html, i) => bodyCell(html, i === 0, rowHeaders)).join('')}</tr>`
-const tableBlock = (table) => {
+const tableBlock = (table, lang) => {
   const caption = escapeHtml(table.caption)
   const columns = table.columns.map((column) => `<th scope="col">${escapeHtml(column)}</th>`).join('')
   const rows = table.rows.map((row) => tableRow(row, table.rowHeaders !== false)).join('')
   const note = table.note ? `<p class="small compare-note">${escapeHtml(table.note)}</p>` : ''
-  const region = `<div class="compare-table" role="region" aria-label="${caption}" tabindex="0">`
-  return `${region}<table><caption>${caption}</caption><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table></div>${note}`
+  const hint = lang === 'fr' ? 'Faites défiler pour lire toutes les colonnes.' : 'Scroll to read all columns.'
+  const region = `<div class="compare-table" role="region" aria-label="${caption}" aria-describedby="table-hint" tabindex="0">`
+  return `<p class="small table-hint" id="table-hint">↔ ${hint}</p>${region}<table><caption>${caption}</caption><thead><tr>${columns}</tr></thead><tbody>${rows}</tbody></table></div>${note}`
 }
 
 const sectionBlock = ({ id, heading, html }) =>
@@ -253,7 +254,7 @@ export function renderGuide(ctx, page) {
   const topRow = `<div class="page-meta"><a class="text-link" href="/${parent.route}">${back}</a>${languageSwitch(page)}</div>`
   const kind = compare ? text.kindCompare : text.kindGuide
   const kicker = [kind, ...(page.tags ?? [])].map(escapeHtml).join(' · ')
-  const table = page.table ? tableBlock(page.table) : ''
+  const table = page.table ? tableBlock(page.table, page.lang) : ''
   const sections = page.sections.map(sectionBlock).join('')
   const body = `<div class="guide-body">${sections}${faqBlock(page)}${sourcesBlock(page)}</div>`
   const main = `<article class="editorial guide wrap">${topRow}<p class="overline">${kicker}</p><h1>${escapeHtml(page.h1)}</h1>${shortAnswerBlock(page)}${datesLine(page)}${table}${body}${relatedBlock(content, page)}</article>`

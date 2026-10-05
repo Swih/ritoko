@@ -1,12 +1,12 @@
 {
   "name": "ritoko",
-  "version": "0.1.1",
-  "description": "Record browser procedures, replay new data, verify results and hold uncertain submissions for review.",
+  "version": "0.2.0",
+  "description": "Resumable browser, API and MCP workflows for AI agents. Verify CSV/Excel batches and review uncertain writes.",
   "author": { "name": "Swih", "url": "https://github.com/Swih" },
   "homepage": "https://ritoko.com",
   "repository": "https://github.com/Swih/ritoko",
   "license": "MIT",
-  "keywords": ["browser", "automation", "rpa", "workflow", "playwright", "replay"],
+  "keywords": ["browser", "automation", "rpa", "workflow", "playwright", "replay", "mcp", "csv", "excel", "ai-agents"],
   "skills": "./skills/",
   "mcpServers": "./.codex-plugin/mcp.json",
   "interface": {

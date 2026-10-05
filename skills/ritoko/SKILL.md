@@ -32,6 +32,8 @@ Choose the driver before starting. Prefer the agent's integrated browser when it
 
 Done keys are skipped. Uncertain outcomes stay blocked even with `repeat: true`; use repeat only when the user explicitly asks for another confirmed execution.
 
+For a direct workflow with `ensure`, eligible rows first use its declared destination lookup. Matching business evidence marks an existing record verified done; explicit absence permits the normal submission. Inconclusive/error responses never permit a write. Host mode rejects `ensure`. See [reference.md](reference.md#ensure-and-reconcile).
+
 ## Host protocol
 
 1. Verify browser script capability if the workflow has browser steps. `host_start {workflow, params, parallel: 1}` starts the authorized batch; parallel accepts 1–4 with one tab per slot. Host mode requires item batches and rejects setup/teardown, press, extract, iframes, hash routes and shared browser-cookie HTTP requests. See [reference.md](reference.md).
@@ -76,6 +78,8 @@ Before commit, resume rebuilds the form. After commit, only verification resumes
 If the user gives up on a run, `run_cancel` stops it for good: unsubmitted items fail as cancelled (later runs process their keys), possibly submitted ones go to review. A cancelled run cannot be resumed; start a new run.
 
 ## Review and statuses
+
+When the authorized recovery concerns a direct run with a frozen `ensure` lookup, use `run_reconcile {runId, key}` for the original uncertain item before asking for manual resolution. It only reads, using frozen business data and current environment credentials; it never replays setup or the submission. Verified presence becomes done; explicit verified absence becomes failed for a later authorized resume. Errors leave the item unchanged. It also supports interrupted committed rows directly. Never retrofit a different lookup into a frozen run or declare absence from a missing selector, generic 404 or timeout. Unsupported lookups require the manual path below.
 
 - `done`: verified. `skipped`: done by a previous run. `paused`: waiting for a repair.
 - `failed`: failed before submission; the matching driver can retry it. Conflicting data under a done key is failed with cause duplicate and stays blocked while that conflict exists.

@@ -10,6 +10,7 @@ const USAGE = `ritoko <command>
   import <workflow.json>                  validate and save a workflow
   run <workflow> [--param k=v]… [--repeat] [--headless]
   resume <runId> [--headless]
+  reconcile <runId> <key>                read the frozen ensure lookup to settle an original review item
   report [runId]                         latest run if omitted
   resolve <runId> <key> done|failed --note "site check" --confirm-checked
                                          only once the record was checked at the destination
@@ -136,6 +137,12 @@ async function main(): Promise<void> {
         console.log(
           JSON.stringify(await runner.resolve(runId, key, status, values.note, { confirmChecked }), null, 2),
         )
+        break
+      }
+      case 'reconcile': {
+        const [, runId, key] = positionals
+        if (!runId || !key) throw new Error('reconcile needs <runId> <key>')
+        console.log(JSON.stringify(await runner.reconcile(runId, key), null, 2))
         break
       }
       case 'browser-close':

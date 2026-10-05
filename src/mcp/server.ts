@@ -29,7 +29,7 @@ const network = new NetworkCapture()
 /** Selectors of password inputs filled while recording: a workflow must not store their literal values. */
 const passwordFields = new Set<string>()
 
-const server = new McpServer({ name: 'ritoko', version: '0.1.1' })
+const server = new McpServer({ name: 'ritoko', version: '0.2.0' })
 
 /** Compact JSON without null fields: every result lands in the agent's context. */
 const block = (value: unknown) => ({
@@ -687,6 +687,25 @@ tool(
       if (runs.length === limit) break
     }
     return text(runs.length ? runs : 'No matching run recorded.')
+  },
+)
+
+tool(
+  'run_reconcile',
+  {
+    title: 'Reconcile an uncertain write',
+    description:
+      'Reads the direct run frozen ensure lookup for one original review item. Verified presence becomes done; explicit verified absence becomes failed for a later run_resume. Never runs setup or submits. Errors, missing fields, conflicting records or ambiguous predicates leave review unchanged. Requires ensure saved before the run; host runs are unsupported.',
+    inputSchema: { runId: z.string(), key: z.string() },
+    annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async ({ runId, key }) => {
+    known(runId)
+    const report = await runner.reconcile(runId, key)
+    return text({
+      ...summary(report, report.status),
+      reconciled: report.items.find((item) => item.key === key),
+    })
   },
 )
 

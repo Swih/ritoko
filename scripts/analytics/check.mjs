@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
+import { contentRoutes } from '../../site/content-routes.js'
 
 const executablePath = [
   process.env.CHROME_PATH,
@@ -28,6 +29,7 @@ async function session({
   dnt = false,
   gpc = false,
   broken = false,
+  path = '/',
 } = {}) {
   const context = await browser.newContext()
   const events = []
@@ -60,11 +62,16 @@ async function session({
         contentType: 'application/javascript',
         body: readFileSync(new URL('../../site/analytics.js', import.meta.url), 'utf8'),
       })
+    if (url.pathname === '/content-routes.js')
+      return route.fulfill({
+        contentType: 'application/javascript',
+        body: readFileSync(new URL('../../site/content-routes.js', import.meta.url), 'utf8'),
+      })
     if (url.pathname === '/analytics.css') return route.fulfill({ contentType: 'text/css', body: '' })
     return route.fulfill({ contentType: 'text/html', body: fixture })
   })
   const page = await context.newPage()
-  await page.goto(`https://${host}/?email=secret#private`)
+  await page.goto(`https://${host}${path}?email=secret#private`)
   return { context, page, events, loads: () => loads }
 }
 
@@ -109,6 +116,27 @@ try {
   await response
   assert.equal(s.loads(), 1, 'Reaccepting does not duplicate tracker')
   await s.context.close()
+  const routes = [
+    contentRoutes.find((path) => path.startsWith('/guides/')),
+    contentRoutes.find((path) => path.startsWith('/fr/guides/')),
+    contentRoutes.find((path) => path.startsWith('/compare/')),
+    '/faq',
+    '/fr/faq',
+  ]
+  for (const path of routes) {
+    assert(path, 'Build the authored site content before checking analytics routes')
+    const known = await session({ path })
+    const viewed = known.page.waitForResponse((response) => response.url().includes('/api/send'))
+    await known.page.getByRole('button', { name: 'Allow statistics' }).click()
+    await viewed
+    assert.equal(known.loads(), 1, `Consent enables analytics on ${path}`)
+    assert(!JSON.stringify(known.events).includes('secret'), 'Content route queries remain private')
+    await known.context.close()
+  }
+  const unknown = await session({ path: '/private/customer-secret' })
+  assert.equal(await unknown.page.locator('.analytics-choice').count(), 0)
+  assert.equal(unknown.loads(), 0, 'Unknown paths never load analytics')
+  await unknown.context.close()
   const failed = await session({ broken: true })
   await failed.page.getByRole('button', { name: 'Allow statistics' }).click()
   await failed.page.getByRole('button', { name: 'Copy', exact: true }).click()

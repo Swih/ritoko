@@ -15,6 +15,8 @@ export type HttpRequest = Hop & {
   timeoutMs: number
   /** Send again after a network error or a transient status. */
   retry: boolean
+  /** A business lookup must prove its configured destination, without redirecting to another route. */
+  rejectRedirects?: boolean
   maxBytes: number
   /** The browser's request context: it carries the cookies of the pages. */
   browser?: APIRequestContext | undefined
@@ -101,6 +103,8 @@ export async function send(req: HttpRequest): Promise<Reply> {
       continue
     }
     const location = reply.headers.get('location')
+    if (req.rejectRedirects && REDIRECT.has(reply.status))
+      throw new Error('Destination lookup redirects are refused')
     if (REDIRECT.has(reply.status) && location) {
       if (++hops > MAX_REDIRECTS) throw new Error(`More than ${MAX_REDIRECTS} redirects`)
       const next = new URL(location, hop.url)

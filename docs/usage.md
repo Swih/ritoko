@@ -37,6 +37,44 @@ node bin/ritoko.mjs resolve <runId> <key> done --note "Order 1042 found in the b
 
 Ritoko cannot see that check, so it records the resolution as unverified: the item message starts with `Manually resolved (unverified):`, the report item carries `resolution: {by: "manual", verified: false, note}`, the run counts `manualResolutions`, and the journal keeps a `resolve` event with the key, outcome, note and time. A `failed` item that is then submitted again and verified by the workflow has the workflow's status again; its `resolve` event stays in the journal. A duplicate-held item is resolved in its original run first.
 
+## Destination lookup: ensure and reconcile
+
+An optional workflow `ensure` checks the destination before running an eligible item's steps. It marks an existing matching record done with `resolution: {by: "ensure", verified: true, note}`. It permits submission only when the declared absence predicate matches. Existing journal duplicate and uncertainty barriers still apply; `repeat` does not bypass the destination check.
+
+```json
+{
+  "ensure": {
+    "read": {
+      "do": "http",
+      "url": "{{param.base}}/orders/by-email",
+      "query": {"email": "{{item.Email}}"},
+      "headers": {"Authorization": "Bearer {{param.token}}"}
+    },
+    "present": {
+      "status": [200],
+      "json": {"/email": "{{item.Email}}", "/name": "{{item.Name}}", "/status": "paid"}
+    },
+    "absent": {"status": [404], "json": {"/error": "Order not found"}}
+  }
+}
+```
+
+This example is a workflow fragment: declare `base`, environment-backed secret `token`, `items.key`, `items.scope` and the normal commit/verification steps too. The endpoint must authoritatively look up the exact business key in that account. Match all relevant business fields, amount, state and operation period in `present.json`; mere success text is insufficient. Both predicates require nonempty JSON Pointer checks. The request and presence predicate must reference every item or param field used in the key. Each predicate's checks must all match, and exactly one predicate must match. Numbers and booleans compare as text, as in `expect.json`.
+
+HTTP lookups support only direct GET with `session: "none"`. Omitted `status` means 2xx. Only explicitly listed 404/410 statuses can mean absence, and their JSON evidence must also match. Authentication errors, generic 404s, missing JSON fields, conflicting records, network errors and ambiguous results fail closed. Lookup reads reject redirects and are never automatically retried. The author must establish that an absence response is authoritative: eventually consistent searches cannot safely establish absence immediately after a timed-out write. Lookup plus submission is not an atomic transaction against outside writers; use destination uniqueness constraints or API idempotency too.
+
+For MCP, use `read: {do: "mcp", server: "shop", tool: "lookup_order", readOnly: true, args: {email: "{{item.Email}}"}}` and omit status predicates. Choose a trusted tool whose documented behavior only reads; it must also advertise `readOnlyHint: true`. An annotation cannot prove its implementation is safe. Tool errors and requests for more input never establish absence.
+
+To settle an original review or interrupted committed item, call MCP `run_reconcile {runId, key}` or:
+
+```bash
+node bin/ritoko.mjs reconcile <runId> <key>
+```
+
+Reconciliation runs only the lookup stored in that run's frozen workflow against its frozen row and params. It never runs setup, changes the saved workflow, reloads input or replays the submission. Presence becomes verified done; explicit absence becomes verified failed, eligible for a later authorized resume. Inconclusive results leave the item unchanged. Reports carry `resolution: {by: "reconcile", verified: true, note}`; journal lookup/resolve events keep the checked predicate paths, source, outcome and timestamp without response bodies or credentials. Cancelled runs remain cancelled. Duplicate-held rows must be reconciled in their original run first.
+
+Lookups may use only item data and params, including environment-backed credentials reloaded at execution time. Saved variables and files, browser checks, browser-cookie HTTP, host runs and agent-managed MCP tools are unsupported and rejected. The explicit scope and lookup must exist before starting the run; an edited current workflow cannot retrofit reconciliation into an old frozen run. `run_adopt` also uses this lookup when configured, requiring presence. Without it, adoption requires verification after the commit; the skipped commit's own response check cannot verify a recording.
+
 ## Checking the installation: `ritoko doctor`
 
 `node bin/ritoko.mjs doctor`, or the MCP tool `doctor`, checks the Node.js version (24 or newer), that `node:sqlite` and `playwright-core` load, that the Ritoko home is writable or can be created, the journal (`PRAGMA integrity_check`, and leases left by a process that exited or stopped responding), the `RITOKO_BROWSER` value and the Chrome executable. Each check is `pass`, `warn` or `fail`, with a one-line fix for the last two; `--json` prints `{ok, checks}`, as the MCP tool returns. The exit code is 1 when a check fails, otherwise 0. A missing Chrome executable is a warning with your own Chrome, which Ritoko attaches to rather than launches, and a failure when a separate Chrome must be launched (`RITOKO_BROWSER=clean`, headless runs).
@@ -127,6 +165,7 @@ node bin/ritoko.mjs run rpa-challenge
 node bin/ritoko.mjs report
 node bin/ritoko.mjs resume <runId>
 node bin/ritoko.mjs resolve <runId> <key> done --note "Matched the record on the site" --confirm-checked
+node bin/ritoko.mjs reconcile <runId> <key>
 node bin/ritoko.mjs cancel <runId>
 node bin/ritoko.mjs doctor
 node bin/ritoko.mjs browser-close
@@ -184,7 +223,7 @@ Hints do not become executable API steps automatically. Verify the endpoint, aut
 - File paths from item data (`upload` of `{{item.File}}`) must stay inside the input file's folder, or the run folder for a downloaded or extracted input; `goto` opens only http(s) URLs. Agents pass absolute paths; the CLI resolves relative ones against its working directory.
 - The whole input is validated before processing. Duplicate/empty keys, missing referenced values and malformed headers are rejected. Rows are frozen in the journal; changing the source file does not alter a resumed batch.
 - A recorded first submission already changed the site. After saving its workflow, call MCP `run_adopt` with the exact full row and evidence note. This runs only confirmation steps and journals the row so replay skips it. Do not replay it before adopting or resolving it.
-- Resolving done records that the effect exists. Resolving failed records that it did not occur, and the row is submitted again on resume. Every decision requires an evidence note and a confirmation that the destination was checked, and is logged as unverified (see [Resolving a review item](#resolving-a-review-item)). For a duplicate-held item, resolve its original run first.
+- Manual resolution records the user's destination check with an evidence note and explicit confirmation, and is logged as unverified (see [Resolving a review item](#resolving-a-review-item)). A configured destination lookup can instead verify an outcome with `run_reconcile` (see [ensure and reconcile](#destination-lookup-ensure-and-reconcile)). Done means the effect exists; failed permits another submission on resume. For a duplicate-held item, settle its original run first.
 - One operation controls the browser at a time. Concurrent CLI/MCP attempts get a busy error naming the active run; a lease left by a process that died or stopped responding is recovered automatically. Read-only reports and page snapshots work during a run.
 
 The journal protects actions executed through this Ritoko installation. It cannot prevent independent submissions, guarantee that a website is idempotent, or infer success from a generic message. Workflows need business checks specific to the site. Legacy runs without a frozen definition resume only if their workflow version still matches; otherwise inspect their outcomes first.

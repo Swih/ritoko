@@ -1,7 +1,7 @@
 {
   "name": "ritoko",
-  "version": "0.1.1",
-  "description": "Turn a browser task your agent solved once into a reliable, resumable procedure.",
+  "version": "0.2.0",
+  "description": "Resumable browser, HTTP API and MCP automation for AI agents. Verify CSV/Excel batches with a local journal.",
   "license": "MIT",
   "mcpName": "io.github.Swih/ritoko",
   "type": "module",
@@ -57,6 +57,11 @@
     "playwright",
     "mcp",
     "claude-code",
-    "codex"
+    "codex",
+    "ai-agents",
+    "csv",
+    "excel",
+    "batch-processing",
+    "resumable-workflows"
   ]
 }

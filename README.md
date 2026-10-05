@@ -1,12 +1,12 @@
 <!-- mcp-name: io.github.Swih/ritoko -->
 
-# Ritoko — reusable automation for AI agents
+# Ritoko — resumable browser automation for AI agents
 
 **Solve a task once. Save the procedure. Run it again with new data.**
 
 Ritoko is an open-source browser automation and robotic process automation (RPA) tool for AI agents. Turn a solved task into a reusable browser, HTTP API or MCP workflow, run CSV or Excel batches, verify results and resume interrupted work with a local SQLite journal.
 
-Use it as a **Claude Code or Codex plugin**, a **local Model Context Protocol (MCP) server**, or a **standalone CLI**. The direct replay engine runs saved workflows without calling an LLM.
+Use it as a **Claude Code or Codex plugin**, a **local Model Context Protocol (MCP) server**, or a **standalone CLI**. The direct replay engine runs saved workflows without calling an LLM; a connected MCP tool may itself use AI.
 
 [![CI](https://github.com/Swih/ritoko/actions/workflows/ci.yml/badge.svg)](https://github.com/Swih/ritoko/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/ritoko)](https://www.npmjs.com/package/ritoko)
@@ -29,6 +29,8 @@ Ritoko keeps those decisions in a reusable procedure:
 - **Process new data.** Feed the procedure another CSV or Excel file instead of explaining the same steps for every row.
 - **Recover with evidence.** See which items finished, failed or have an uncertain outcome. Confirmed items are skipped on later runs; uncertain writes are held for review.
 
+With a configured destination lookup, Ritoko can also **check before creating a record** (`ensure`) and **settle an uncertain result by reading it back** (`reconcile`). These 0.2.0 features require a direct HTTP GET or a trusted, explicitly read-only MCP tool, with separate rules proving presence and absence. A failed lookup blocks the row. [Configuration and limits](docs/usage.md#destination-lookup-ensure-and-reconcile).
+
 For example: teach your agent to create one customer, save `customer-import`, then ask it to process next week's spreadsheet and report each result.
 
 ## What can you automate?
@@ -49,6 +51,8 @@ Ritoko fits **repeated tasks with explicit rules and verifiable outcomes**. A ne
 ### 1. Install in your agent
 
 Requires **Node.js 24 or newer**. Browser workflows using the direct runner also need **Google Chrome**. Standalone HTTP/MCP workflows can run without a browser.
+
+This branch prepares **0.2.0**. The published npm 0.1.1 does not include `ensure`, `reconcile` or `doctor`; use the validated Git revision to evaluate them. [Release status and checks](docs/release.md#020-release-candidate).
 
 **Claude Code**
 
@@ -207,6 +211,8 @@ The RPA Challenge example downloads its own Excel input. Choose the direct brows
 
 For an interrupted direct run, use `node bin/ritoko.mjs resume <runId>`. Workflows, journals, evidence and output files live in `~/.ritoko` by default; override with `RITOKO_HOME`.
 
+Use `node bin/ritoko.mjs doctor` to inspect the local setup before troubleshooting a batch. For a review row with a configured destination lookup, `node bin/ritoko.mjs reconcile <runId> <key>` reads the result without submitting it again. Manual `resolve` requires a note and `--confirm-checked` after you inspect the destination yourself.
+
 ## Evidence and current scope
 
 | Validation | Observed result | Evidence |
@@ -228,7 +234,7 @@ The recorded demos used Ritoko 0.1.0 on Windows with headless Chrome. The RPA si
 
 ### Do I need a separate LLM API key?
 
-Ritoko's deterministic runner does not require one. When you use the plugin, your client agent supplies the reasoning through its existing subscription or API configuration. Recording, repairing and host orchestration still use that client. External APIs, OCR providers or paid generation services require their own access and may charge separately.
+Ritoko's deterministic runner does not require one. When you use the plugin, your client agent supplies the reasoning through its existing subscription or API configuration. Recording, repairing and host orchestration still use that client, and connected tools may call models themselves. External APIs, OCR providers or paid generation services require their own access and may charge separately.
 
 ### Does Ritoko read invoices or perform OCR?
 
@@ -255,6 +261,8 @@ Optional network capture provides fetch/XHR metadata to help the agent investiga
 - [Advanced usage](docs/usage.md): client configuration, CLI, browser choices, host batches, recovery and workflow rules.
 - [Agent skill](skills/ritoko/SKILL.md): instructions for recording, running, adopting and repairing workflows.
 - [Integration reference](skills/ritoko/reference.md): input formats, HTTP/MCP step shapes and driver limits.
+- [Problem guides](https://ritoko.com/guides) and [tool comparisons](https://ritoko.com/compare): choose a workflow and understand its tradeoffs.
+- [Search visibility measurement](docs/research/geo-measurement.md): fixed English/French prompts and reports based on captured answers.
 - [Release gates](docs/release.md): required checks, validation roadmap, publishing and update policies.
 - [Report a bug or request a feature](https://github.com/Swih/ritoko/issues): include the client, Node/browser/OS versions and a redacted reproduction. Keep credentials and business data private.
 

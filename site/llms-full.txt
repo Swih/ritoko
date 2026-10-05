@@ -9,6 +9,366 @@ Scope, stated plainly:
 - The journal only covers actions run through this installation and cannot see submissions made elsewhere. Ritoko does not promise “no duplicates”: that needs a correct business key, commit step and result check in the workflow.
 - No built-in OCR, and no CAPTCHA or anti-bot bypass. Requires Node.js 24 or newer, and Google Chrome for browser workflows with the direct runner.
 
+## Guides
+
+### Did my browser submission succeed before the automation crashed?
+
+URL: https://ritoko.com/guides/uncertain-writes-after-interruption
+Updated: 2026-10-05
+
+Short answer: A timeout or crash does not prove that the submission failed. Check the destination for that exact business record before retrying. Ritoko holds a write interrupted after its commit boundary for review and resumes other eligible rows from its journal.
+
+Q: Can I retry a submission just because its request timed out?
+A: No. A timeout can occur after acceptance. Check the destination and keep the item in review while its outcome remains uncertain.
+
+Q: Does resolving an item as failed submit it immediately?
+A: The resolution records that the effect did not occur. A later resume or eligible new run can submit it again, which is why the destination check matters.
+
+### How do I avoid duplicate records when I import the same CSV again?
+
+URL: https://ritoko.com/guides/avoid-duplicate-csv-imports
+Updated: 2026-10-05
+
+Short answer: Identify each operation with a stable business key and destination scope, adopt any row already submitted during recording, and verify each result. Ritoko normally skips confirmed keys and holds uncertain writes, but its local journal does not guarantee that duplicates are impossible.
+
+Q: Does using an email key guarantee no duplicates?
+A: No. The key must match the destination’s business identity, and the scope and result checks must be correct. Ritoko’s journal also cannot track independent submissions.
+
+Q: Should I use the CSV filename as the scope?
+A: No. Use destination, account and operation parameters. A new filename should not make an old business operation look new.
+
+### Do I need an AI model to solve the same browser task on every run?
+
+URL: https://ritoko.com/guides/recurring-tasks-model-costs
+Updated: 2026-10-05
+
+Short answer: A stable task with explicit actions and checks can run as a saved procedure. Ritoko’s direct replay engine does not call an LLM. Recording, repair, host orchestration and external tools that use models can still consume model usage or incur charges.
+
+### How do I keep a recorded browser workflow useful when the page changes?
+
+URL: https://ritoko.com/guides/robust-browser-selectors
+Updated: 2026-10-05
+
+Short answer: Record targets that identify the intended control by meaning and uniqueness, then verify the business result. Ritoko supports selector fallbacks and pauses eligible direct runs for deliberate repair. A changed submit target needs explicit confirmation before repair.
+
+### How can I process a CSV or Excel file and resume halfway through?
+
+URL: https://ritoko.com/guides/resumable-csv-excel-batches
+Updated: 2026-10-05
+
+Short answer: Define one verifiable operation per row, validate the input and keep a durable record of each outcome. Ritoko reads CSV and XLSX files, freezes the rows and workflow in its SQLite journal, and resumes the same run while keeping confirmed rows and holding uncertain writes.
+
+Q: Will changing the Excel file change a resumed run?
+A: No. The run uses its frozen input and workflow. Start a new batch deliberately for corrected or new data, after inspecting the previous outcomes.
+
+### Should a repeated task use the browser, an HTTP API or an MCP tool?
+
+URL: https://ritoko.com/guides/browser-api-mcp-workflows
+Updated: 2026-10-05
+
+Short answer: Use the supported interface whose business contract and permissions you can verify. Browser steps fit tasks exposed through a UI; HTTP steps fit documented endpoints; MCP steps reuse tools with known inputs and outputs. Ritoko can combine these paths under one workflow and journal.
+
+## Compare
+
+### Ritoko or Playwright MCP for repeated browser work?
+
+URL: https://ritoko.com/compare/ritoko-vs-playwright-mcp
+Updated: 2026-10-05
+
+Short answer: Choose Playwright MCP when an agent needs to inspect and explore a browser task. Choose Ritoko when the procedure is known and you want to replay structured rows with per-item outcome tracking. The tools can serve different stages of the same task.
+
+### Should I save a Ritoko workflow or generate Playwright code?
+
+URL: https://ritoko.com/compare/ritoko-vs-playwright-codegen
+Updated: 2026-10-05
+
+Short answer: Choose Playwright codegen when you want editable automation or test code and control over its application logic. Choose Ritoko when its supported workflow steps and built-in row journal fit a recurring spreadsheet operation. Both can execute saved actions without model inference.
+
+### When should I use Ritoko rather than browser-use?
+
+URL: https://ritoko.com/compare/ritoko-vs-browser-use
+Updated: 2026-10-05
+
+Short answer: Choose browser-use when you need an agent to work through unfamiliar or variable browser tasks. Choose Ritoko for a known, verifiable operation repeated over structured rows. browser-use also has saved-history replay, so replay alone is not the distinction.
+
+### Should I use Stagehand or Ritoko for a recurring browser task?
+
+URL: https://ritoko.com/compare/ritoko-vs-stagehand
+Updated: 2026-10-05
+
+Short answer: Choose Stagehand for browser automation that combines natural-language discovery with code. Choose Ritoko when supported saved steps and a local spreadsheet outcome journal fit the job. Both have ways to avoid model inference during repeated execution; Stagehand’s cache behavior depends on its version and path.
+
+### When does a Ritoko batch fit better than a Skyvern workflow?
+
+URL: https://ritoko.com/compare/ritoko-vs-skyvern
+Updated: 2026-10-05
+
+Short answer: Choose Skyvern when you want AI browser workflows and automatic agent fallback from cached code. Choose Ritoko for a known local procedure with explicit row checks and review holds after uncertain writes. Skyvern also documents replay without inference, so that feature alone does not separate them.
+
+### How does Ritoko compare with taprun for saved browser tasks?
+
+URL: https://ritoko.com/compare/ritoko-vs-taprun
+Updated: 2026-10-05
+
+Short answer: Both save browser tasks for local replay without a live model choosing every action. Ritoko focuses on CSV/XLSX rows, explicit business keys and a local recovery journal. taprun documents drift verification, script converters and uncertain-intent resolution. Check its engine licensing and exact recovery semantics before adopting it.
+
+## FAQ
+
+### Ritoko FAQ
+
+URL: https://ritoko.com/faq
+Updated: 2026-10-05
+
+Short answer: Ritoko saves verifiable browser, HTTP and MCP procedures and replays them with a local journal. These answers explain setup, model usage, spreadsheet inputs and the checks needed to recover uncertain writes.
+
+#### Fit and setup
+
+Q: What is Ritoko?
+A: Ritoko saves a task an agent solved as a reusable JSON workflow, then runs it with new parameters or CSV/XLSX rows. Supported steps include browser actions, HTTP requests and MCP tools. Its local journal keeps each item’s outcome. Start with the quick start.
+
+Q: When should I use a saved workflow instead of an agent?
+A: Use a workflow when the task recurs, its inputs are structured and its result can be checked. Use an agent when the task needs exploration or judgment on each run. The agent can discover a procedure and Ritoko can replay the repeated part.
+
+Q: What do I need to run Ritoko?
+A: The local runtime requires Node.js 24 or newer. Direct browser workflows also need Google Chrome; standalone HTTP/MCP workflows can run without it. Ritoko is available as a CLI, local stdio MCP server and Claude Code or Codex plugin.
+
+Q: Can any MCP client connect to Ritoko?
+A: A local client that can launch a stdio process can connect, subject to its own capabilities. Claude Code and Codex CLI are the tested plugin clients. An isolated cloud client cannot reach your local process or files without a separate connection mechanism.
+
+Q: Can Ritoko use my logged-in browser?
+A: The direct runner can attach to personal Chrome with your remote-debugging permission, or use an explicitly selected clean profile. Complete login or MFA in that browser. Host browser replay needs permission to execute page scripts; current Codex computer-use evaluation is read-only and cannot execute it. See driver choices.
+
+#### Model usage and services
+
+Q: Does Ritoko replay without calling an LLM?
+A: Its direct replay engine makes no LLM calls. Recording, repair and host orchestration can use your client agent’s model. An external MCP tool, OCR provider or generation endpoint may also invoke models and charge separately. See recurring task costs.
+
+Q: Do I need a separate LLM API key?
+A: The direct runner does not need one. Your client agent supplies reasoning through its existing subscription or API configuration when recording, repairing or orchestrating host runs. External services require their own configured access.
+
+Q: Does Ritoko include OCR or an invoice parser?
+A: No. Optional document_image returns a downloaded JPEG/PNG for your client model to read. An external OCR service is another choice. Each new document still needs interpretation and verification before its extracted values are submitted.
+
+Q: Can I schedule recurring runs inside Ritoko?
+A: Ritoko currently has no built-in scheduler. A separate scheduler can invoke an existing CLI workflow. Arrange login, credentials, timeouts and review follow-up before running unattended, and inspect each run’s report.
+
+#### Inputs and results
+
+Q: Which spreadsheet formats does Ritoko accept?
+A: It reads .xlsx with a selectable sheet, and comma- or semicolon-separated CSV in UTF-8 or Windows-1252. Required values and duplicate or empty business keys are checked before processing. See input preparation.
+
+Q: Are hidden Excel rows and formatted identifiers imported?
+A: Hidden and filtered-out XLSX rows are read too. Excel number formatting is not applied, so keep identifiers with leading zeros as Text. Formulas use their saved results; referenced formula errors or missing saved results are treated as empty.
+
+Q: Does editing the input file change a resumed run?
+A: No. A run uses the workflow and rows frozen in its journal. Start a new batch deliberately for new or corrected data, after inspecting previous outcomes.
+
+Q: What does the run report contain?
+A: The JSON report includes the run status, counts and per-item outcomes, causes, messages and available evidence or files. It does not currently generate an HTML or CSV audit report. A partial result still needs attention; it is not a completed batch.
+
+#### Writes and recovery
+
+Q: Does Ritoko guarantee no duplicate writes?
+A: No. It normally skips confirmed items and holds uncertain writes within this installation’s journal. Correct business keys, destination scopes, commit boundaries and row-specific checks are essential. Independent submissions remain outside that journal. See duplicate import prevention.
+
+Q: What does review mean after a crash or timeout?
+A: The write may have succeeded without a usable confirmation. Check that exact record at the destination before resolving it. An inconclusive result should remain in review, including across later runs. See uncertain-write recovery.
+
+Q: How do I resolve a review item?
+A: After someone checks the destination, resolve done if the effect exists or failed if it did not occur. Failed resolution permits a later submission. Both require an evidence note and explicit check confirmation; manual resolutions are recorded as unverified decisions. An agent must obtain the user’s confirmation of the destination check.
+
+Q: How do I resume an interrupted run?
+A: Use run_resume or CLI ritoko resume for a direct run, and host_next for a host run. Confirmed rows stay confirmed; eligible failures can retry; uncertain writes remain held. Resolve an original uncertain run before a later duplicate-held run.
+
+Q: What if my demonstration already created the first record?
+A: After saving the workflow, use run_adopt with that exact full row and an evidence note. It runs confirmation steps and journals the already submitted record so replay can skip it. Do not replay that row while its outcome remains unresolved.
+
+Q: Can Ritoko check the destination before writing or settle review automatically?
+A: The 0.2.0 Git release candidate adds optional ensure lookup before a write and run_reconcile lookup to settle an uncertain result; npm 0.1.1 does not include them. They require direct HTTP GET or a trusted MCP read tool advertising readOnlyHint: true, explicit scope and predicates proving presence or absence. Inconclusive reconciliation leaves the item unchanged; it never resubmits. Browser checks, host runs and agent-managed tools are unsupported, and the lookup must exist in the frozen run. See configuration and limits.
+
+Q: What happens when a recorded selector changes?
+A: A supported direct run can pause for step_repair. Check that a new target identifies the intended control; repairing the commit target requires explicit confirmation. Failures after submission can instead become review. Host mode currently has no selector repair. See selector recording and repair.
+
+Q: Can I intentionally repeat completed rows?
+A: Yes, an explicit repeat: true or CLI --repeat reruns completed rows. Review holds remain blocked. Use repeat only when the repeated business effect is intended.
+
+#### Integrations and local data
+
+Q: Can a browser recording automatically become an API workflow?
+A: No. Optional network capture gives fetch/XHR metadata for investigation. Verify the authorized API contract and authentication, test a row and explicitly save supported HTTP steps. An uncertain API write must not automatically fall back to another browser submission.
+
+Q: Can a workflow call an existing MCP tool?
+A: Yes, supported configured servers can supply mcp steps, and host {ref: "agent"} references reuse an existing agent connection. Verify schemas, side effects, protocol compatibility and service charges. Tool calls are not automatically retried. See integration choices.
+
+Q: Where are workflows, the journal and output files stored?
+A: They live under ~/.ritoko by default; RITOKO_HOME changes that location. The journal contains business rows and ordinary saved values. Saved files keep their original bytes and can contain sensitive data. Treat the installation’s files as business records.
+
+Q: How should I store credentials?
+A: Declare secret parameters backed by environment variables. Do not put credentials in workflow JSON or spreadsheets. Runtime credentials are excluded from the journal, while saved response files preserve their bytes and need their own care. Read the integration reference.
+
+## Français
+
+### Ma soumission dans le navigateur a-t-elle abouti avant l’arrêt ?
+
+URL: https://ritoko.com/fr/guides/uncertain-writes-after-interruption
+Updated: 2026-10-05
+
+Short answer: Un délai dépassé ou un plantage ne prouve pas que la soumission a échoué. Vérifiez la destination pour cet enregistrement précis avant de réessayer. Ritoko met en revue les écritures interrompues après leur étape commit et reprend les autres lignes admissibles depuis son journal.
+
+Q: Puis-je réessayer une soumission simplement parce que la requête a expiré ?
+A: Non. Le délai peut expirer après l’acceptation. Vérifiez la destination et laissez la ligne en revue tant que le résultat reste incertain.
+
+Q: La résolution en échec soumet-elle immédiatement la ligne ?
+A: Elle consigne que l’effet n’a pas eu lieu. Une reprise ultérieure ou un nouveau lot admissible pourra la soumettre ; c’est pourquoi la vérification de la destination est nécessaire.
+
+### Comment éviter les doublons en important à nouveau le même CSV ?
+
+URL: https://ritoko.com/fr/guides/avoid-duplicate-csv-imports
+Updated: 2026-10-05
+
+Short answer: Identifiez chaque opération par une clé métier et un périmètre de destination stables, adoptez toute ligne déjà soumise pendant l’enregistrement et vérifiez chaque résultat. Ritoko ignore normalement les clés confirmées et met en revue les écritures incertaines, mais son journal local ne garantit pas l’absence de doublons.
+
+Q: Une clé fondée sur l’adresse e-mail garantit-elle l’absence de doublons ?
+A: Non. La clé doit correspondre à l’identité métier de la destination, et le périmètre et les contrôles doivent être corrects. Le journal de Ritoko ne suit pas non plus les soumissions indépendantes.
+
+Q: Puis-je utiliser le nom du CSV comme périmètre ?
+A: Non. Utilisez la destination, le compte et les paramètres de l’opération. Un nouveau nom de fichier ne doit pas faire passer une opération existante pour une nouvelle.
+
+### Faut-il un modèle d’IA pour résoudre la même tâche de navigateur à chaque fois ?
+
+URL: https://ritoko.com/fr/guides/recurring-tasks-model-costs
+Updated: 2026-10-05
+
+Short answer: Une tâche stable, avec des actions et des contrôles explicites, peut être exécutée comme une procédure enregistrée. Le moteur de reprise directe de Ritoko n’appelle pas de LLM. L’enregistrement, la réparation, l’orchestration par l’hôte et les services externes utilisant des modèles peuvent encore consommer des ressources ou entraîner des frais.
+
+Q: La reprise directe peut-elle garantir zéro appel de modèle sur l’ensemble de mon processus ?
+A: Non. Elle n’appelle pas de LLM pour exécuter les étapes enregistrées, mais l’agent, les réparations et les services externes peuvent encore utiliser des modèles.
+
+Q: Dois-je compter l’OCR dans le coût de reprise ?
+A: Oui, si chaque nouveau document est interprété par un modèle ou un service OCR externe. Ritoko ne fournit pas de moteur OCR local.
+
+### Comment garder un workflow navigateur utile quand la page change ?
+
+URL: https://ritoko.com/fr/guides/robust-browser-selectors
+Updated: 2026-10-05
+
+Short answer: Choisissez des cibles identifiant le contrôle visé par son sens et son unicité, puis vérifiez le résultat métier. Ritoko propose des sélecteurs de repli et met en pause certaines reprises directes pour permettre une réparation réfléchie. Le remplacement d’une cible d’envoi exige une confirmation explicite.
+
+Q: Ritoko répare-t-il automatiquement chaque sélecteur qui échoue ?
+A: Non. Les exécutions directes admissibles peuvent s’arrêter pour une réparation explicite. Le remplacement de la cible commit demande une confirmation ; le mode hôte n’offre actuellement pas la réparation des sélecteurs.
+
+Q: Un sélecteur stable garantit-il que le résultat métier est correct ?
+A: Non. Vérifiez l’enregistrement ou la preuve propre à la ligne. Un contrôle qui fonctionne peut avoir changé de comportement.
+
+### Comment traiter un CSV ou Excel et reprendre le lot à mi-parcours ?
+
+URL: https://ritoko.com/fr/guides/resumable-csv-excel-batches
+Updated: 2026-10-05
+
+Short answer: Définissez une opération vérifiable par ligne, validez l’entrée et conservez une trace durable de chaque résultat. Ritoko lit les fichiers CSV et XLSX, fige les lignes et le workflow dans son journal SQLite et reprend le même lot en conservant les lignes confirmées et en mettant les écritures incertaines en revue.
+
+Q: Modifier le fichier Excel modifiera-t-il un lot repris ?
+A: Non. Le lot utilise l’instantané enregistré des entrées et du workflow. Après avoir examiné les résultats précédents, lancez volontairement un nouveau lot pour les données corrigées ou nouvelles.
+
+### Une tâche répétitive doit-elle utiliser le navigateur, une API HTTP ou un outil MCP ?
+
+URL: https://ritoko.com/fr/guides/browser-api-mcp-workflows
+Updated: 2026-10-05
+
+Short answer: Utilisez l’interface prise en charge dont vous pouvez vérifier le contrat métier et les autorisations. Les étapes navigateur conviennent aux tâches dans une interface graphique ; HTTP aux points d’accès documentés ; MCP aux outils dont les entrées et sorties sont connues. Ritoko peut réunir ces voies dans un même workflow et journal.
+
+### FAQ Ritoko
+
+URL: https://ritoko.com/fr/faq
+Updated: 2026-10-05
+
+Short answer: Ritoko enregistre des procédures navigateur, HTTP et MCP vérifiables et les rejoue avec un journal local. Ces réponses présentent l’installation, l’usage des modèles, les entrées tableur et les contrôles nécessaires pour reprendre des écritures incertaines.
+
+#### Compatibilité et installation
+
+Q: Qu’est-ce que Ritoko ?
+A: Ritoko enregistre une tâche résolue par un agent sous forme de workflow JSON réutilisable, puis l’exécute avec de nouveaux paramètres ou des lignes CSV/XLSX. Les étapes prises en charge incluent les actions navigateur, les requêtes HTTP et les outils MCP. Son journal local conserve le résultat de chaque ligne. Consultez le guide de démarrage.
+
+Q: Quand utiliser un workflow enregistré plutôt qu’un agent ?
+A: Utilisez un workflow si la tâche est récurrente, ses entrées structurées et son résultat vérifiable. Faites appel à un agent si chaque exécution demande exploration ou jugement. L’agent peut découvrir une procédure que Ritoko reprend ensuite.
+
+Q: Que faut-il pour exécuter Ritoko ?
+A: L’environnement local nécessite Node.js 24 ou une version ultérieure. Les workflows navigateur directs ont aussi besoin de Google Chrome ; les workflows HTTP/MCP autonomes peuvent s’exécuter sans navigateur. Ritoko est disponible en CLI, serveur MCP local via stdio et plugin Claude Code ou Codex.
+
+Q: Tous les clients MCP peuvent-ils se connecter à Ritoko ?
+A: Un client local capable de lancer un processus stdio peut se connecter, dans les limites de ses propres fonctions. Claude Code et Codex CLI sont les clients testés avec le plugin. Un client cloud isolé ne peut pas accéder au processus ou aux fichiers locaux sans mécanisme de connexion distinct.
+
+Q: Ritoko peut-il utiliser mon navigateur déjà connecté ?
+A: L’exécuteur direct peut se connecter à Chrome personnel avec votre autorisation de débogage distant, ou utiliser un profil isolé explicitement choisi. Connectez-vous et faites l’authentification multifacteur dans ce navigateur. La reprise navigateur en mode hôte demande l’autorisation d’exécuter des scripts dans la page ; l’évaluation actuelle de Codex en mode computer-use est en lecture seule et ne peut pas l’exécuter. Voir les choix du pilote.
+
+#### Modèles et services
+
+Q: Ritoko reprend-il une tâche sans appeler de LLM ?
+A: Son moteur de reprise directe n’effectue aucun appel LLM. L’enregistrement, la réparation et l’orchestration hôte peuvent utiliser le modèle de l’agent client. Un outil MCP, fournisseur OCR ou service de génération externe peut aussi utiliser des modèles et facturer ses appels. Voir les coûts des tâches récurrentes.
+
+Q: Faut-il une clé API LLM distincte ?
+A: L’exécuteur direct n’en a pas besoin. Lors de l’enregistrement, de la réparation ou de l’orchestration hôte, l’agent client apporte le raisonnement via son abonnement ou sa configuration API. Les services externes nécessitent leurs propres accès configurés.
+
+Q: Ritoko fournit-il l’OCR ou un analyseur de factures ?
+A: Non. L’outil facultatif document_image renvoie un JPEG/PNG téléchargé que le modèle de votre client peut lire. Un service OCR externe est une autre possibilité. Chaque nouveau document doit encore être interprété et vérifié avant que ses valeurs extraites soient soumises.
+
+Q: Puis-je planifier des exécutions récurrentes dans Ritoko ?
+A: Ritoko n’intègre actuellement aucun planificateur. Un planificateur distinct peut lancer un workflow CLI existant. Prévoyez la connexion, les accès, les délais d’exécution et le suivi des éléments en revue avant un lancement sans surveillance ; consultez le rapport de chaque exécution.
+
+#### Entrées et résultats
+
+Q: Quels formats de tableur Ritoko accepte-t-il ?
+A: Il lit les fichiers .xlsx avec sélection d’une feuille, ainsi que les CSV séparés par des virgules ou points-virgules en UTF-8 ou Windows-1252. Les valeurs obligatoires et les clés métier vides ou dupliquées sont contrôlées avant le traitement. Voir la préparation des entrées.
+
+Q: Les lignes Excel masquées et les identifiants formatés sont-ils importés ?
+A: Les lignes XLSX masquées ou filtrées sont également lues. Le format numérique Excel n’est pas appliqué : conservez au format Texte les identifiants ayant des zéros initiaux. Les formules utilisent leurs résultats enregistrés ; les erreurs ou résultats manquants des formules référencées sont traités comme des valeurs vides.
+
+Q: Modifier le fichier d’entrée change-t-il un lot repris ?
+A: Non. Le lot utilise le workflow et les lignes figés dans son journal. Après avoir examiné les résultats précédents, lancez volontairement un nouveau lot pour des données corrigées ou nouvelles.
+
+Q: Que contient le rapport d’exécution ?
+A: Le rapport JSON présente le statut du lot, les décomptes et résultats par ligne, les causes, messages et preuves ou fichiers disponibles. Il ne génère actuellement aucun rapport d’audit HTML ou CSV. Un résultat partiel demande encore une intervention ; le lot n’est pas terminé.
+
+#### Écritures et reprise
+
+Q: Ritoko garantit-il l’absence de doublons dans les écritures ?
+A: Non. En règle générale, il ignore les éléments confirmés et met en attente les écritures incertaines dans le journal de cette installation. Des clés métier, périmètres de destination, frontières commit et vérifications propres à chaque ligne corrects sont essentiels. Les soumissions indépendantes restent hors de ce journal. Voir la prévention des doublons à l’import.
+
+Q: Que signifie « en revue » après un plantage ou un délai dépassé ?
+A: L’écriture a peut-être réussi sans confirmation exploitable. Vérifiez cet enregistrement précis dans la destination avant de le résoudre. Si le résultat n’est pas concluant, laissez-le en revue, y compris lors d’exécutions ultérieures. Voir la reprise d’une écriture incertaine.
+
+Q: Comment résoudre un élément en revue ?
+A: Après vérification de la destination par une personne, résolvez-le en done si l’effet existe, ou en failed s’il n’a pas eu lieu. Une résolution en échec permet une soumission ultérieure. Dans les deux cas, ajoutez une note de preuve et confirmez explicitement la vérification ; les résolutions manuelles sont enregistrées comme décisions non vérifiées. Un agent doit obtenir la confirmation de l’utilisateur que la destination a été vérifiée.
+
+Q: Comment reprendre un lot interrompu ?
+A: Utilisez run_resume ou la commande CLI ritoko resume pour un lot direct, et host_next pour un lot hôte. Les lignes confirmées le restent ; les échecs admissibles peuvent être réessayés ; les écritures incertaines restent bloquées. Résolvez le lot initial contenant l’incertitude avant un lot ultérieur bloqué par le doublon.
+
+Q: Que faire si la démonstration a déjà créé le premier enregistrement ?
+A: Après avoir enregistré le workflow, utilisez run_adopt avec la ligne complète et exacte et une note de preuve. L’outil exécute les vérifications et journalise l’enregistrement déjà soumis pour que les reprises puissent l’ignorer. Ne soumettez pas à nouveau cette ligne tant que son résultat n’est pas réglé.
+
+Q: Ritoko peut-il vérifier la destination avant une écriture ou résoudre automatiquement un élément en revue ?
+A: Le candidat Git 0.2.0 ajoute une recherche facultative ensure avant l’écriture et une recherche run_reconcile pour résoudre un résultat incertain ; npm 0.1.1 ne les inclut pas. Elles exigent un GET HTTP direct ou un outil MCP de lecture de confiance déclarant readOnlyHint: true, un périmètre explicite et des prédicats prouvant la présence ou l’absence. Une réconciliation non concluante ne modifie pas l’élément ; elle ne le soumet jamais à nouveau. Les vérifications navigateur, les exécutions hôte et les outils gérés par l’agent ne sont pas pris en charge ; la recherche doit figurer dans le lot figé. Voir la configuration et les limites.
+
+Q: Que se passe-t-il si un sélecteur enregistré change ?
+A: Une exécution directe prise en charge peut se mettre en pause pour step_repair. Vérifiez qu’une nouvelle cible identifie le contrôle voulu ; le remplacement de la cible commit exige une confirmation explicite. Les échecs après soumission peuvent plutôt passer en revue. Le mode hôte ne propose actuellement aucune réparation de sélecteur. Voir l’enregistrement et la réparation des sélecteurs.
+
+Q: Puis-je répéter volontairement des lignes terminées ?
+A: Oui, repeat: true ou l’option CLI --repeat relance les lignes terminées. Les éléments en revue restent bloqués. Utilisez cette option seulement si la répétition de l’effet métier est voulue.
+
+#### Intégrations et données locales
+
+Q: Un enregistrement navigateur peut-il devenir automatiquement un workflow API ?
+A: Non. La capture réseau facultative fournit des métadonnées fetch/XHR à des fins d’étude. Vérifiez le contrat API autorisé et l’authentification, testez une ligne et enregistrez explicitement les étapes HTTP prises en charge. Une écriture API incertaine ne doit pas entraîner automatiquement une autre soumission dans le navigateur.
+
+Q: Un workflow peut-il appeler un outil MCP existant ?
+A: Oui, les serveurs configurés pris en charge peuvent fournir des étapes mcp, et les références hôte {ref: "agent"} réutilisent une connexion d’agent existante. Vérifiez les schémas, effets de bord, compatibilité du protocole et frais de service. Les appels d’outils ne sont pas réessayés automatiquement. Voir les choix d’intégration.
+
+Q: Où sont enregistrés les workflows, le journal et les fichiers de sortie ?
+A: Par défaut, ils se trouvent sous ~/.ritoko ; RITOKO_HOME permet de modifier cet emplacement. Le journal contient les lignes métier et les valeurs enregistrées ordinaires. Les fichiers sauvegardés conservent leurs octets d’origine et peuvent contenir des données sensibles. Traitez les fichiers de l’installation comme des documents métier.
+
+Q: Comment stocker les identifiants d’accès ?
+A: Déclarez des paramètres secrets alimentés par des variables d’environnement. Ne placez pas les identifiants dans le JSON du workflow ou les tableurs. Les identifiants d’exécution sont exclus du journal, mais les fichiers de réponses sauvegardés conservent leurs octets et demandent des précautions distinctes. Consultez la référence des intégrations.
+
 ## Documentation
 
 - [README](https://github.com/Swih/ritoko#readme): install, how it works, evidence and current scope

@@ -6,3 +6,5 @@ dist/
 .DS_Store
 .vercel
 .claude/
+docs/research/geo-samples.jsonl
+design/seo-geo-recovery-qa/

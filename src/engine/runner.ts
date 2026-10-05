@@ -10,6 +10,7 @@ import { runHttp, runMcp, VerificationError } from './integrations.ts'
 import { readItems } from './items.ts'
 import type { Cause, ItemRow, Ledger, Resolution, Run } from './ledger.ts'
 import { describe, resolve, SelectorError } from './locate.ts'
+import { lookup } from './lookup.ts'
 import { McpClients } from './mcp-client.ts'
 import { paths } from './paths.ts'
 import { type Selector, type Step, Target, Workflow } from './schema.ts'
@@ -222,6 +223,20 @@ export class Runner {
       check(wf)
       this.#direct(wf)
       if (!wf.items || wf.readOnly) throw new Error('Adoption is for a recorded write-batch item')
+      const after = wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)
+      if (
+        !wf.ensure &&
+        !after.some(
+          (step) =>
+            step.do === 'expect' ||
+            ((step.do === 'http' || step.do === 'mcp') &&
+              (Object.keys(step.expect?.json ?? {}).length > 0 ||
+                (step.do === 'http' && Boolean(step.expect?.status?.length)))),
+        )
+      )
+        throw new Error(
+          'Adoption needs an ensure lookup or verification after the commit; the skipped commit response cannot verify it',
+        )
       const resolved = this.#params(wf, params)
       const scope: Scope = { ...this.#scope(wf, resolved, {}), item: data }
       const key = render(wf.items.key, scope).trim()
@@ -236,9 +251,18 @@ export class Runner {
       this.ledger.updateRun(run.id, { phase: 'items' })
       this.ledger.updateItem(run.id, 0, { status: 'running', committed: true, attempts: 1 })
       this.ledger.event(run.id, 'adopt', { key, note })
-      const after = wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)
       this.#mcp = new McpClients(wf.servers, scope)
       try {
+        if (wf.ensure) {
+          const result = await this.#lookup(run, wf, scope)
+          if (result.outcome !== 'present')
+            throw new VerificationError('The recorded submission is absent at the destination')
+          this.ledger.updateItem(run.id, 0, {
+            status: 'done',
+            resolution: { by: 'ensure', verified: true, note: 'Adopted through destination lookup' },
+          })
+          return this.#finish(run.id, 'done')
+        }
         const page = usesBrowser(after) ? await this.browser.page() : undefined
         for (const step of after) {
           this.ledger.updateItem(run.id, 0, { stepId: step.id })
@@ -279,6 +303,59 @@ export class Runner {
 
   resume(runId: string): Promise<Outcome> {
     return this.ledger.exclusive(async () => this.#execute(runId))
+  }
+
+  /** Settle one uncertain item using only its frozen destination lookup; never runs setup or writes. */
+  reconcile(runId: string, key: string): Promise<Report> {
+    return this.ledger.exclusive(async () => {
+      const run = this.ledger.run(runId)
+      if (this.ledger.driver(runId) !== 'direct') throw new Error('Reconcile only supports direct runs')
+      if (!run.definition) throw new Error('Reconcile requires a frozen workflow snapshot')
+      const wf = Workflow.parse(run.definition)
+      check(wf)
+      this.#direct(wf)
+      if (!wf.ensure) throw new Error('This frozen workflow has no ensure lookup')
+      const item = this.ledger.items(runId).find((row) => row.key === key)
+      if (
+        !item ||
+        item.cause === 'duplicate' ||
+        !(
+          item.status === 'review' ||
+          (item.committed && ['running', 'paused', 'failed'].includes(item.status))
+        )
+      )
+        throw new Error('Reconcile requires an original review item or an interrupted committed item')
+      const scope = { ...this.#scope(wf, run.params, {}), item: item.data, key, committed: true }
+      this.#mcp = new McpClients(wf.servers, scope)
+      try {
+        const result = await this.#lookup(run, wf, scope)
+        if (item.status !== 'review')
+          this.ledger.updateItem(runId, item.idx, { status: 'review', cause: 'interrupted' })
+        this.ledger.resolve(
+          runId,
+          key,
+          result.outcome === 'present' ? 'done' : 'failed',
+          `Destination lookup verified ${result.outcome}`,
+          { by: 'reconcile', evidence: JSON.stringify(result.evidence) },
+        )
+        return this.report(runId)
+      } finally {
+        await this.#closeServers()
+      }
+    })
+  }
+
+  async #lookup(run: Run, wf: Workflow, scope: Scope) {
+    if (!wf.ensure) throw new Error('Missing ensure lookup')
+    const result = await lookup(wf.ensure, {
+      scope,
+      dir: this.#dir(run.id),
+      identity: '',
+      commit: () => {},
+      mcp: this.#mcp as McpClients,
+    })
+    this.ledger.event(run.id, 'lookup', { key: scope.key, ...result.evidence })
+    return result
   }
 
   /** Stops a run for good: unsubmitted items fail as cancelled, freeing their keys; submitted ones go to review. */
@@ -597,6 +674,31 @@ export class Runner {
       scope.committed = committed
       scope.key = item.key
       update({ status: 'running', committed, attempts: item.attempts + 1, message: null, cause: null, vars })
+      if (wf.ensure && !committed) {
+        try {
+          const result = await this.#lookup(run, wf, scope)
+          if (result.outcome === 'present') {
+            update({
+              status: 'done',
+              cause: null,
+              message: 'Existing record verified at destination; nothing submitted',
+              resolution: { by: 'ensure', verified: true, note: 'Destination lookup verified present' },
+            })
+            failures = 0
+            continue
+          }
+        } catch (error) {
+          update({ status: 'failed', cause: 'verification', message: `ensure: ${(error as Error).message}` })
+          if (++failures >= MAX_CONSECUTIVE_FAILURES) {
+            this.ledger.updateRun(run.id, {
+              status: 'stopped',
+              message: `${failures} consecutive item failures`,
+            })
+            return undefined
+          }
+          continue
+        }
+      }
       for (let i = from; i < wf.item.length; i++) {
         const step = wf.item[i] as Step
         update({ step: i, stepId: step.id })

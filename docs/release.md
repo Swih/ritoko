@@ -29,6 +29,23 @@ The suite must continue proving:
 - A thousand-row API-only host run completes, retains no finished cursors, and does not materialize the whole input repeatedly. This complexity check uses SQLite in memory; persistence is exercised separately by restart tests.
 - The tarball ships compiled integration modules, installs without development dependencies, exposes its CLI and stdio MCP tools, preserves exit statuses, and completes API-only workflows without Chrome.
 
+## 0.2.0 release candidate
+
+The recovery branch prepares 0.2.0; it is not a published npm release. The production distribution remains 0.1.1 until the candidate passes CI on all three operating systems and the versioned package is published through the release process below.
+
+- `ensure` checks an explicitly scoped destination before an item writes. A matching record is confirmed without submitting; only a positive absence predicate permits the workflow to continue.
+- `reconcile` and MCP `run_reconcile` settle an original uncertain row using its frozen workflow, parameters and item data. They read once without setup or resubmission; inconclusive results leave the row unchanged.
+- Lookups support direct HTTP GET without redirects or browser sessions, and trusted MCP tools explicitly declaring `readOnlyHint: true`. Browser, host and agent-managed lookup paths are unsupported. The lookup must already exist in the run snapshot.
+- Manual `resolve` now requires an evidence note and `--confirm-checked`; it records an unverified human decision. API/MCP adoption must perform fresh verification rather than trusting the skipped commit response. These changes can require updates to existing automation clients.
+- `doctor` inspects the runtime and local installation. Selector fallbacks and unscoped workflows are visible in diagnostics and evidence.
+- The site adds six guides in each language, six English tool comparisons and English/French FAQs, with canonical links, reciprocal language links, dated sources, sitemaps and text discovery files. The generated routes stay inside the analytics consent and path allowlist.
+
+Local candidate validation on 2026-10-05, Windows with Node 24.19.0: lint and TypeScript pass, 186 unit tests and 37 E2E tests pass, including the isolated npm tarball and killed-CLI HTTP acceptance/reconciliation test. Site preflight passes for 35 indexable pages; production builds are idempotent, sample output is refused in production mode and removed on rebuild. Browser checks cover 24 pages at 390 and 1,440 px, and analytics consent, private-parameter removal and unknown-path exclusion.
+
+The CI also rebuilds the site, checks publication metadata and rejects committed generated output that differs from the source data. Source-revision CI results remain the release gate; local tests alone do not establish support across all systems.
+
+Search and answer visibility remains **not measured**. The [measurement kit](research/geo-measurement.md) reports real, saved observations; the research forms and interview templates contain no collected customer evidence. Technical SEO checks do not demonstrate rankings, citations or customer demand.
+
 ## Evidence before expanding compatibility claims
 
 Controlled fixtures cannot establish every site's behavior. Keep the following work separate from an initial package release:

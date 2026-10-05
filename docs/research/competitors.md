@@ -2,6 +2,15 @@
 
 Retrieved 2026-10-05. Data and every source URL: [competitors.json](competitors.json).
 
+The main table and code references below are the original research snapshot. The site-content review dated 2026-10-05 (review date) opened deployed official pages through the web tool and adds the version and source caveats below. Its source list is retained separately in `about.siteContentReview` in the JSON; it does not erase the earlier blocked-host results.
+
+### Caveats for the new comparison pages
+
+- Stagehand’s [v4 cache](https://docs.stagehand.dev/v4/best-practices/caching) needs a Browserbase browser. Its [v3 docs](https://docs.stagehand.dev/v3/best-practices/caching) separately document filesystem `cacheDir` replay in LOCAL and BROWSERBASE environments. Always identify the version and replay path; “local Stagehand always calls a model” is too broad.
+- The [live taprun homepage](https://taprun.dev/) calls the engine MIT-licensed, while its [public packages README](https://raw.githubusercontent.com/LeonTing1010/tap/main/packages/README.md) calls the consuming CLI proprietary and closed-source. The licence remains unresolved. The [vendor index](https://taprun.dev/llms.txt) documents `mark` for `intent_uncertain` resolution; the comparison must acknowledge this.
+- [browser-use replay source](https://raw.githubusercontent.com/browser-use/browser-use/main/browser_use/agent/service.py) supports saved history and variable substitution. AI extraction and summaries can still use a model. Do not claim all executions necessarily use fresh reasoning for each action.
+- New pages omit volatile prices, adoption counts and invented reliability or cost rankings. An equivalent recovery contract not established by the reviewed sources is a limit of evidence, not proof that a deployment or custom application lacks the feature. Ritoko implementation references below remain pinned to the original commit and must not be used to infer newly released features.
+
 Competitor facts come only from the vendor's own docs, README, LICENSE, pricing page or package registry, opened on that date. "Not found" means we read the pages listed in the JSON and did not see it. Ritoko facts cite this repository's code at commit `1daf6eb` (R1 to R8 below). Many vendor sites were blocked from this environment; where a vendor builds its docs site from its own GitHub repository, we read those source files instead (see [Coverage](#coverage)).
 
 ## Summary

@@ -84,6 +84,8 @@
 .compare-table tbody th{position:sticky;left:0;z-index:1;min-width:150px;background:var(--paper);font-weight:600;color:var(--ink)}
 .compare-table td{color:var(--muted)}
 .compare-note{max-width:780px;margin-top:12px}
+.table-hint{display:none}
+@media(max-width:680px){.table-hint{display:block;margin-top:28px;color:var(--stamp)}.table-hint+.compare-table{margin-top:12px}}
 .guide .faq summary{padding-block:20px;font-size:16px;font-weight:600;line-height:1.5}
 .guide .faq details p{max-width:none;padding-bottom:22px;font-size:15px;line-height:1.8}
 .guide-section .sources-list{padding-left:0;list-style:none}

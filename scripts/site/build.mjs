@@ -173,8 +173,8 @@ const homeFaqLink = () => {
 
 // The static pages share authored markup; no framework or build step is needed to serve them.
 const home = `${head(
-  'Ritoko — Repeatable workflow automation for your AI agent',
-  'A local plugin for Claude Code and Codex that turns a task your agent did once into a checked, resumable workflow, with a per-item journal.',
+  'Ritoko — Resumable browser automation for AI agents',
+  'Automate CSV and Excel batches with Claude Code or Codex. Save browser, API and MCP workflows, verify results and resume interrupted work locally.',
   '',
   [
     {
@@ -186,7 +186,7 @@ const home = `${head(
       softwareRequirements: 'Node.js 24+. Google Chrome for browser workflows.',
       license: 'https://github.com/Swih/ritoko/blob/main/LICENSE',
       description:
-        'Save a task as a parameterized workflow. Replay deterministic steps without a model, check each result and resume from the item journal.',
+        'Save browser, HTTP and MCP tasks as workflows, verify results and resume locally. The direct runner calls no model; connected tools may use AI.',
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     },
     { '@type': 'WebSite', '@id': `${origin}/#website`, name: 'Ritoko', url: origin, inLanguage: 'en' },
@@ -204,14 +204,14 @@ ${header()}
     <p class="visual-caption">Automatic illustration · CSV → customer records · sample data</p>
   </div>
 </section>
-<div class="wrap trust-strip"><p><strong>0</strong><span>Model calls to replay <br>the saved deterministic steps</span></p><p><strong>100<span>%</span></strong><span>RPA Challenge <br>70 of 70 fields</span></p><p><strong>Resume.</strong><span>Keep completed work. <br>Hold uncertain submissions.</span></p><a href="/use-cases/rpa-challenge">See the measured run ${arrow}</a></div>
+<div class="wrap trust-strip"><p><strong>0</strong><span>Model calls by the direct runner <br>to replay saved steps</span></p><p><strong>100<span>%</span></strong><span>RPA Challenge <br>70 of 70 fields</span></p><p><strong>Resume.</strong><span>Keep completed work. <br>Hold uncertain submissions.</span></p><a href="/use-cases/rpa-challenge">See the measured run ${arrow}</a></div>
 
 <section class="section usefulness-section"><div class="wrap usefulness-layout"><div><p class="overline">THE WORK IT TAKES OFF YOUR HANDS</p><h2>Same clicks. <br>New data. <br><em>A useful routine.</em></h2><p>Use Ritoko when you already know what a successful task looks like, and need to repeat it across a list.</p></div><div class="usefulness-examples"><a href="/use-cases/customer-onboarding"><span class="overline">01 / CUSTOMER OPERATIONS</span><h3>Create customers from a CSV.</h3><p>Teach one form. Fill the next records from your spreadsheet and check that each customer exists.</p><span class="example-path">customers.csv <span>→</span> checked customer records ${arrow}</span></a><a href="/use-cases/reports-and-exports"><span class="overline">02 / REPORTING</span><h3>Collect the monthly exports.</h3><p>Save how to choose an account and a period. Run that routine again for the next month’s list.</p><span class="example-path">accounts + month <span>→</span> named report files ${arrow}</span></a><a href="/use-cases/browser-and-http"><span class="overline">03 / ADMINISTRATIVE WORK</span><h3>Update a list of records.</h3><p>Combine a browser and a verified API. Check the changes; hold an uncertain write for review.</p><span class="example-path">records + changes <span>→</span> checked results ${arrow}</span></a></div></div></section>
 
 <section class="section process-section" id="process"><div class="wrap">
   <div class="section-intro"><p class="overline">01 / THE PROCESS</p><h2>One example taught. <br><em>A whole list handled.</em></h2><p>Follow a customer onboarding task from the first example to an interrupted batch. <br>The demonstration starts by itself. Choose any step to look more closely.</p></div>
   <div class="process-layout" data-process>
-    <div class="process-chapters"><button class="chapter active" type="button" data-chapter="0" aria-current="step"><span class="chapter-number">01</span><span><strong>Do it once.</strong><small>Your agent works through the task. Browser actions are recorded; API and tool steps can be written directly.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="1"><span class="chapter-number">02</span><span><strong>Keep the procedure.</strong><small>The agent defines the inputs, a business key, the submission boundary and the result checks.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="2"><span class="chapter-number">03</span><span><strong>Let the rows run.</strong><small>Ritoko replays the saved steps without a model. Each item is checked and written to the journal.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="3"><span class="chapter-number">04</span><span><strong>Continue, carefully.</strong><small>Verified work stays done. An uncertain submission waits for review. Safe remaining rows continue.</small></span><span aria-hidden="true">↗</span></button></div>
+    <div class="process-chapters"><button class="chapter active" type="button" data-chapter="0" aria-current="step"><span class="chapter-number">01</span><span><strong>Do it once.</strong><small>Your agent works through the task. Browser actions are recorded; API and tool steps can be written directly.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="1"><span class="chapter-number">02</span><span><strong>Keep the procedure.</strong><small>The agent defines the inputs, a business key, the submission boundary and the result checks.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="2"><span class="chapter-number">03</span><span><strong>Let the rows run.</strong><small>The direct runner calls no model. Each item is checked and journaled; connected tools may use AI.</small></span><span aria-hidden="true">↗</span></button><button class="chapter" type="button" data-chapter="3"><span class="chapter-number">04</span><span><strong>Continue, carefully.</strong><small>Verified work stays done. An uncertain submission waits for review. Safe remaining rows continue.</small></span><span aria-hidden="true">↗</span></button></div>
     <div class="process-stage"><div class="story-transport"><span><i class="status-dot"></i><span data-loop-status>Automatic demonstration</span></span><div><button type="button" data-loop-toggle>Ⅱ Pause demo</button><button type="button" data-loop-reset>↻ Restart</button></div></div><div class="phase-explanation" data-phase><span class="phase-tag">THE FIRST TIME · WITH YOUR AGENT</span><p>One example customer shows your agent how the task works.</p></div>${demo()}<div class="process-extra"><button class="button button-small button-outline" type="button" data-interrupt>Jump to the interruption ${arrow}</button><a class="text-link" href="/watch">See the actual recording ${arrow}</a></div></div>
   </div>
 </div></section>
@@ -232,7 +232,7 @@ ${businessCta()}
 <section class="section faq-section"><div class="wrap faq-layout"><div><p class="overline">A FEW USEFUL ANSWERS</p><h2>Before you <br><em>press replay.</em></h2>${homeFaqLink()}</div><div class="faq">${[
   [
     'Does every replay use AI?',
-    'Deterministic browser, HTTP and MCP steps replay without a model. Your agent is involved in learning the task and repairing a changed workflow. Reading a new document with an agent or OCR service is a separate per-document step.',
+    'The direct runner executes saved steps without calling a model. Recording, repair and host orchestration use your agent; connected MCP tools can also use AI. Reading each new document with an agent or OCR provider remains a separate step.',
   ],
   [
     'What happens if a submission is uncertain?',
@@ -351,6 +351,15 @@ for (const entry of content.entries) {
 }
 writeFileSync(resolve(site, 'llms.txt'), llmsTxt(origin, content))
 writeFileSync(resolve(site, 'llms-full.txt'), llmsFullTxt(origin, content))
+// Analytics only sees a finite allowlist of authored public routes, never arbitrary visitor paths.
+const contentRoutes = content.entries.map((page) => `/${page.route}`)
+const routeList = contentRoutes.length
+  ? `[\n${contentRoutes.map((route) => `  '${route}',`).join('\n')}\n]`
+  : '[]'
+writeFileSync(
+  resolve(site, 'content-routes.js'),
+  `// Generated by scripts/site/build.mjs.\nexport const contentRoutes = ${routeList}\n`,
+)
 
 const pageModified = (route) => ({ route, lastmod: siteModified })
 const homeModified = [siteModified, ...content.guides.en.map((page) => page.dateModified)].sort().at(-1)

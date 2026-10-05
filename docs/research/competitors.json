@@ -2,6 +2,32 @@
   "about": {
     "purpose": "Verified fact base about alternatives to Ritoko, used to write fair comparison pages. Human summary: competitors.md.",
     "retrieved": "2026-10-05",
+    "siteContentReview": {
+      "retrieved": "2026-10-05",
+      "note": "Client-date review for the new comparison pages. The original 2026-10-05 research snapshot and its blocked-host provenance are retained; those failures do not describe the later web-tool access below.",
+      "findings": [
+        "Stagehand v4 server caching still requires Browserbase; v3 documentation separately describes filesystem cacheDir replay on LOCAL and BROWSERBASE. Claims about local caching must name the version and path.",
+        "taprun live homepage says MIT-licensed, while public packages README calls the consuming CLI proprietary and closed-source. Licence uncertainty remains; the public index confirms mark resolution for intent_uncertain runs.",
+        "browser-use agent source confirms saved-history replay with variable substitution; AI extract steps and final summary can use a model. No blanket always-inference claim is used.",
+        "New pages avoid exact prices, release cadence, star counts and comparative reliability claims. They distinguish scope of documentation evidence from proof that a feature is absent."
+      ],
+      "sources": [
+        "https://github.com/microsoft/playwright-mcp",
+        "https://playwright.dev/docs/codegen",
+        "https://github.com/browser-use/browser-use",
+        "https://raw.githubusercontent.com/browser-use/browser-use/main/browser_use/agent/service.py",
+        "https://docs.stagehand.dev/v3/basics/observe",
+        "https://docs.stagehand.dev/v3/best-practices/caching",
+        "https://docs.stagehand.dev/v4/best-practices/caching",
+        "https://github.com/Skyvern-AI/skyvern",
+        "https://raw.githubusercontent.com/Skyvern-AI/skyvern/main/docs/developers/features/code-caching.mdx",
+        "https://raw.githubusercontent.com/Skyvern-AI/skyvern/main/docs/cloud/building-agents/configure-blocks.mdx",
+        "https://raw.githubusercontent.com/LeonTing1010/tap/main/README.md",
+        "https://raw.githubusercontent.com/LeonTing1010/tap/main/packages/README.md",
+        "https://taprun.dev/llms.txt",
+        "https://taprun.dev/"
+      ]
+    },
     "rules": [
       "Competitor facts come only from that vendor's own docs, pricing page, README, LICENSE, release page or package registry entry, opened on the retrieval date. Search-engine summaries and third-party blogs are not used as sources.",
       "Ritoko facts cite this repository's code (file:line at commit 1daf6eb).",

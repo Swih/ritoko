@@ -12,7 +12,7 @@ export type RunStatus = 'running' | 'paused' | 'done' | 'partial' | 'stopped'
 export type ItemStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'review' | 'skipped'
 export type Cause = 'selector' | 'verification' | 'system' | 'interrupted' | 'duplicate' | 'cancelled'
 /** Who settled a review item: a person, whose check Ritoko cannot see, or Ritoko reading the record back. */
-export type ResolvedBy = 'manual' | 'reconcile'
+export type ResolvedBy = 'manual' | 'reconcile' | 'ensure'
 /** Provenance of a status set by a resolution rather than by the workflow's own checks. */
 export type Resolution = { by: ResolvedBy; verified: boolean; note: string }
 
@@ -486,7 +486,11 @@ export class Ledger {
     key: string,
     status: 'done' | 'failed',
     note: string,
-    { by, evidence, confirmChecked = false }: { by: ResolvedBy; evidence?: string; confirmChecked?: boolean },
+    {
+      by,
+      evidence,
+      confirmChecked = false,
+    }: { by: Exclude<ResolvedBy, 'ensure'>; evidence?: string; confirmChecked?: boolean },
   ): void {
     if (!note.trim()) throw new Error('Resolution needs a note describing the check on the site')
     const item = this.items(runId).find((i) => i.key === key)

@@ -113,7 +113,55 @@ export function secretVariables(wf: Workflow): string[] {
 
 /** Structural errors throw; quality issues come back as warnings. */
 export function check(wf: Workflow): string[] {
-  const all = [...wf.setup, ...wf.item, ...wf.teardown]
+  const lookup = wf.ensure?.read
+  const all = [...wf.setup, ...wf.item, ...wf.teardown, ...(lookup ? [lookup] : [])]
+  if (wf.ensure) {
+    if (!wf.items?.scope.trim() || wf.readOnly)
+      throw new Error('ensure requires a write batch with an explicit items.scope')
+    const read = wf.ensure.read
+    if (
+      read.commit ||
+      !(
+        (read.do === 'http' &&
+          read.method === 'GET' &&
+          read.session === 'none' &&
+          !read.body &&
+          !read.idempotencyKey) ||
+        (read.do === 'mcp' && read.readOnly === true)
+      ) ||
+      ('save' in read && read.save) ||
+      ('saveAs' in read && read.saveAs) ||
+      ('expect' in read && read.expect)
+    )
+      throw new Error(
+        'ensure.read must be a direct GET or readOnly MCP lookup without commit, save, body or expect',
+      )
+    if (read.do === 'mcp') {
+      const server = wf.servers[read.server]
+      if (server && 'ref' in server && server.ref === 'agent')
+        throw new Error('ensure does not support agent-managed MCP tools')
+      if (wf.ensure.present.status || wf.ensure.absent.status)
+        throw new Error('ensure status predicates are only supported for HTTP')
+    }
+    if (references(JSON.stringify(wf.ensure)).some((r) => r.ns !== 'param' && r.ns !== 'item'))
+      throw new Error('ensure may only reference frozen item data and params; no setup variables or files')
+    const keys = references(wf.items.key)
+    const reads = references(
+      JSON.stringify(
+        read.do === 'http' ? [read.url, read.query, read.headers] : read.do === 'mcp' ? read.args : {},
+      ),
+    )
+    const matches = Object.values(wf.ensure.present.json).flatMap(references)
+    if (
+      !keys.some((key) => key.ns === 'item') ||
+      keys.some(
+        (key) =>
+          !reads.some((r) => r.ns === key.ns && r.key === key.key) ||
+          !matches.some((r) => r.ns === key.ns && r.key === key.key),
+      )
+    )
+      throw new Error('ensure.read and present.json must bind every template field in the business key')
+  }
   const ids = all.map((s) => s.id)
   const dup = ids.filter((id, i) => ids.indexOf(id) !== i)
   if (dup.length) throw new Error(`Duplicate step ids: ${dup.join(', ')}`)
@@ -253,6 +301,11 @@ export function check(wf: Workflow): string[] {
       throw new Error('items.scope may only reference params describing the destination/account/operation')
   }
   walk(wf.item, true, new Set(setupVars))
+  if (wf.ensure) {
+    walk([wf.ensure.read], true, new Set())
+    verify(JSON.stringify([wf.ensure.present, wf.ensure.absent]), 'ensure predicates', true)
+    nonSecret(JSON.stringify([wf.ensure.present, wf.ensure.absent]), 'ensure predicates')
+  }
   walk(wf.teardown, false, new Set(setupVars))
   // A server starts once per run, before any item: only params can fill it.
   for (const [name, server] of Object.entries(wf.servers)) {

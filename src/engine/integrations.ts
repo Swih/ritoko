@@ -39,10 +39,12 @@ export type Call = {
   /** The Ritoko browser's request context, for `session: "browser"`. */
   browser?: APIRequestContext | undefined
   mcp: McpClients
+  /** Internal readback: parse JSON and require MCP's positive read-only declaration. */
+  readback?: boolean
 }
 
 /** `file` is a saved file; `evidence` is a compact line for the journal: never a body or a secret. */
-export type Done = { file?: string | undefined; evidence: Record<string, unknown> }
+export type Done = { file?: string | undefined; evidence: Record<string, unknown>; value?: unknown }
 
 const JSON_BYTES = 10 * 1024 * 1024
 const EXTENSIONS: Record<string, string> = {
@@ -193,6 +195,7 @@ export async function runHttp(step: HttpStep, call: Call): Promise<Done> {
     body: body?.text,
     timeoutMs: step.timeoutMs ?? 30_000,
     retry: !step.commit && !call.committed && !scope.committed && SAFE_READS.has(step.method),
+    rejectRedirects: call.readback,
     maxBytes: step.saveAs ? MAX_BYTES : JSON_BYTES,
     browser: step.session === 'browser' ? call.browser : undefined,
   })
@@ -203,7 +206,7 @@ export async function runHttp(step: HttpStep, call: Call): Promise<Done> {
     : reply.status >= 200 && reply.status < 300
   if (!accepted) throw new VerificationError(`${step.method} ${where} answered ${reply.status}`)
   let value: unknown
-  if (step.save || step.expect?.json)
+  if (call.readback || step.save || step.expect?.json)
     try {
       value = JSON.parse(reply.body.toString('utf8'))
     } catch {
@@ -217,6 +220,7 @@ export async function runHttp(step: HttpStep, call: Call): Promise<Done> {
     : undefined
   return {
     file,
+    ...(call.readback && { value }),
     evidence: { method: step.method, url: where, status: reply.status, saved, file: file && basename(file) },
   }
 }
@@ -294,6 +298,8 @@ async function mcpFile(step: McpStep, result: CallToolResult, value: unknown, ca
 /** Calls the tool of an mcp step, checks its result, keeps what the step asks to keep. */
 export async function runMcp(step: McpStep, call: Call): Promise<Done> {
   const tool = await call.mcp.open(step.server, step.tool)
+  if (call.readback && tool.annotations?.readOnlyHint !== true)
+    throw new Error('A lookup MCP tool must explicitly declare readOnlyHint: true')
   if (step.readOnly && tool.annotations?.readOnlyHint === false)
     throw new Error(
       `MCP tool "${step.tool}" declares that it writes; it cannot be called with readOnly: true`,
@@ -328,5 +334,9 @@ export async function finishMcp(step: McpStep, result: CallToolResult, call: Cal
   const value = resultValue(result)
   const saved = conclude(value, step, call.scope)
   const file = step.saveAs ? await mcpFile(step, result, value, call) : undefined
-  return { file, evidence: { server: step.server, tool: step.tool, saved, file: file && basename(file) } }
+  return {
+    file,
+    ...(call.readback && { value }),
+    evidence: { server: step.server, tool: step.tool, saved, file: file && basename(file) },
+  }
 }

@@ -469,6 +469,10 @@ describe('host mode protocol', () => {
         item.key,
         'done',
         'Confirmed the exact email in the local lab submissions',
+        {
+          by: 'manual',
+          confirmChecked: true,
+        },
       )
     }
     const done = await agent(

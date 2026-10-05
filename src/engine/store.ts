@@ -43,6 +43,7 @@ export class Store {
       warnings.push(
         `items.scope changed from "${previous.items.scope}" to "${workflow.items.scope}": keys completed under the old scope are not recognized under a different one and would be submitted again.`,
       )
+    if (workflow.items && !workflow.items.scope) warnings.push(UNSCOPED)
     await mkdir(this.dir, { recursive: true })
     const file = join(this.dir, `${workflow.name}.json`)
     const temporary = `${file}.${randomUUID()}.tmp`
@@ -64,6 +65,10 @@ export class Store {
     return (await this.save(workflow)).workflow
   }
 }
+
+/** An empty scope matches every scope in Ledger.barrier: the same key sent elsewhere counts as done. */
+export const UNSCOPED =
+  'items.scope is empty: such a run shares its keys with every scope of this workflow, so a key completed for one destination or account is skipped for another instead of submitted. Set items.scope from the params naming the destination/account/operation, e.g. "{{param.account}}".'
 
 /** Parses a workflow, with one short "path: problem" line per error instead of a raw zod dump. */
 export function parseWorkflow(input: unknown): Workflow {

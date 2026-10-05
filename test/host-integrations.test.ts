@@ -247,7 +247,9 @@ describe('mixed host integrations', () => {
     expect((await f.host.next(first.runId)).done?.counts).toEqual({ done: 1, review: 1 })
     const blocked = await f.start()
     expect(blocked.done?.counts).toEqual({ skipped: 1, review: 1 })
-    await f.runner.resolve(first.runId, 'b@example.test', 'failed', 'Checked tool ledger: no job exists')
+    await f.runner.resolve(first.runId, 'b@example.test', 'failed', 'Checked tool ledger: no job exists', {
+      confirmChecked: true,
+    })
     const resumed = await f.host.next(first.runId)
     expect(tool(resumed).args).toEqual({})
     expect(tool(resumed).actionId).not.toBe(tool(second).actionId)

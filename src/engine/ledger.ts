@@ -11,6 +11,10 @@ export type RunStatus = 'running' | 'paused' | 'done' | 'partial' | 'stopped'
  */
 export type ItemStatus = 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'review' | 'skipped'
 export type Cause = 'selector' | 'verification' | 'system' | 'interrupted' | 'duplicate' | 'cancelled'
+/** Who settled a review item: a person, whose check Ritoko cannot see, or Ritoko reading the record back. */
+export type ResolvedBy = 'manual' | 'reconcile'
+/** Provenance of a status set by a resolution rather than by the workflow's own checks. */
+export type Resolution = { by: ResolvedBy; verified: boolean; note: string }
 
 export type Run = {
   id: string
@@ -51,6 +55,8 @@ export type ItemRow = {
   attempts: number
   /** Values saved by this item's http and mcp steps. */
   vars: Record<string, string>
+  /** Set while the item's status comes from a resolution: any later status change clears it. */
+  resolution: Resolution | null
 }
 
 type RunRecord = {
@@ -89,6 +95,7 @@ type ItemRecord = {
   evidence: string | null
   attempts: number
   vars: string
+  resolution: string | null
 }
 
 const itemRow = (r: ItemRecord): ItemRow => ({
@@ -105,12 +112,13 @@ const itemRow = (r: ItemRecord): ItemRow => ({
   evidence: r.evidence,
   attempts: r.attempts,
   vars: JSON.parse(r.vars),
+  resolution: r.resolution ? JSON.parse(r.resolution) : null,
 })
 
 const now = () => new Date().toISOString()
 /** A lease holder refreshes its heartbeat this often; a lease silent for LEASE_EXPIRY_MS is abandoned. */
 const HEARTBEAT_MS = 5_000
-const LEASE_EXPIRY_MS = 60_000
+export const LEASE_EXPIRY_MS = 60_000
 
 export function processAlive(pid: number): boolean {
   try {
@@ -153,6 +161,7 @@ export class Ledger {
       );
       CREATE INDEX IF NOT EXISTS items_business_key ON items(key);
       CREATE INDEX IF NOT EXISTS items_run_status ON items(run_id, status, idx);
+      CREATE INDEX IF NOT EXISTS events_run_kind ON events(run_id, kind);
     `)
     this.transaction(() => {
       for (const [table, additions] of Object.entries({
@@ -165,7 +174,7 @@ export class Ledger {
           active_since: 'INTEGER',
           vars: "TEXT NOT NULL DEFAULT '{}'",
         },
-        items: { step_id: 'TEXT', vars: "TEXT NOT NULL DEFAULT '{}'" },
+        items: { step_id: 'TEXT', vars: "TEXT NOT NULL DEFAULT '{}'", resolution: 'TEXT' },
         leases: { heartbeat: 'INTEGER NOT NULL DEFAULT 0' },
       })) {
         const columns = this.db
@@ -179,6 +188,11 @@ export class Ledger {
           if (column === 'active_ms')
             this.db.exec(
               'UPDATE runs SET active_ms = CAST((julianday(finished_at) - julianday(started_at)) * 86400000 AS INTEGER) WHERE finished_at IS NOT NULL',
+            )
+          // Every earlier resolution was a person's word: manual and unverified.
+          if (column === 'resolution')
+            this.db.exec(
+              `UPDATE items SET resolution = json_object('by', 'manual', 'verified', json('false'), 'note', substr(message, 20)) WHERE message LIKE 'Manually resolved: %'`,
             )
         }
       }
@@ -386,13 +400,24 @@ export class Ledger {
     patch: Partial<
       Pick<
         ItemRow,
-        'status' | 'step' | 'stepId' | 'committed' | 'cause' | 'message' | 'evidence' | 'attempts' | 'vars'
+        | 'status'
+        | 'step'
+        | 'stepId'
+        | 'committed'
+        | 'cause'
+        | 'message'
+        | 'evidence'
+        | 'attempts'
+        | 'vars'
+        | 'resolution'
       >
     >,
   ): void {
     this.#fence()
-    const sets = Object.keys(patch).map((k) => `${k === 'stepId' ? 'step_id' : k} = ?`)
-    const values = Object.values(patch).map((v) =>
+    // A status set by anything but a resolution replaces the resolved one.
+    const changes = 'status' in patch && !('resolution' in patch) ? { ...patch, resolution: null } : patch
+    const sets = Object.keys(changes).map((k) => `${k === 'stepId' ? 'step_id' : k} = ?`)
+    const values = Object.values(changes).map((v) =>
       typeof v === 'boolean' ? Number(v) : v && typeof v === 'object' ? JSON.stringify(v) : (v ?? null),
     )
     this.db
@@ -443,11 +468,42 @@ export class Ledger {
       .run(runId, kind, JSON.stringify(detail), now())
   }
 
-  resolve(runId: string, key: string, status: 'done' | 'failed', note: string): void {
+  /** Details of a run's events of one kind, oldest first. */
+  events(runId: string, kind: string): unknown[] {
+    return this.db
+      .prepare('SELECT detail FROM events WHERE run_id = ? AND kind = ? ORDER BY rowid')
+      .all(runId, kind)
+      .map((r) => JSON.parse(String(r.detail)))
+  }
+
+  /**
+   * Settles a review item. A person's resolution is recorded as unverified and needs their confirmation that
+   * they checked the destination: a wrong done loses the write for good, a wrong failed submits it again.
+   * A reconciliation (by Ritoko reading the record back) carries what it read as evidence.
+   */
+  resolve(
+    runId: string,
+    key: string,
+    status: 'done' | 'failed',
+    note: string,
+    { by, evidence, confirmChecked = false }: { by: ResolvedBy; evidence?: string; confirmChecked?: boolean },
+  ): void {
     if (!note.trim()) throw new Error('Resolution needs a note describing the check on the site')
     const item = this.items(runId).find((i) => i.key === key)
     if (item?.status !== 'review') throw new Error('Only a review item can be resolved')
     if (item.cause === 'duplicate') throw new Error(`Resolve the original run first: ${item.message}`)
+    if (by === 'manual' && !confirmChecked) {
+      const risk =
+        status === 'done'
+          ? `Resolving "${key}" as done tells Ritoko the record exists: later runs skip this row, so if it does not exist it is never submitted.`
+          : `Resolving "${key}" as failed means the run will submit this row again on resume, which creates a duplicate if the record already exists at the destination.`
+      throw new Error(
+        `${risk} Ask the user to check the record at the destination first, and pass confirmChecked: true (CLI: --confirm-checked) only once they confirm that check; never set it on your own.`,
+      )
+    }
+    if (by === 'reconcile' && !evidence?.trim())
+      throw new Error('A reconciliation needs the evidence it read back')
+    const verified = by === 'reconcile'
     this.transaction(() => {
       this.updateItem(runId, item.idx, {
         status,
@@ -455,9 +511,18 @@ export class Ledger {
         step: 0,
         stepId: null,
         cause: null,
-        message: `Manually resolved: ${note}`,
+        message: `${verified ? 'Reconciled (verified)' : 'Manually resolved (unverified)'}: ${note}`,
+        resolution: { by, verified, note },
       })
-      this.event(runId, 'resolve', { key, status, note })
+      this.event(runId, 'resolve', {
+        key,
+        status,
+        note,
+        by,
+        verified,
+        ...(evidence && { evidence }),
+        at: now(),
+      })
       // A paused run keeps waiting for its repair; other runs finish items on resume; a cancelled run stays stopped.
       if (this.run(runId).status !== 'paused' && !this.cancelled(runId))
         this.updateRun(runId, { status: 'partial', phase: 'items', stepId: null })

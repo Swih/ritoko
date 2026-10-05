@@ -258,10 +258,18 @@ function sameTab() {
 }
 
 function chromePath(explicit?: string): string {
-  if (explicit) {
-    if (!existsSync(explicit)) throw new Error(`Chrome executable not found: ${explicit}`)
-    return explicit
-  }
+  const found = findChrome(explicit)
+  if (found) return found
+  throw new Error(
+    explicit
+      ? `Chrome executable not found: ${explicit}`
+      : 'Google Chrome is required. Install it or set RITOKO_CHROME_PATH.',
+  )
+}
+
+/** The Chrome executable a dedicated Chrome is launched from: the explicit one, else a standard install. */
+export function findChrome(explicit?: string): string | undefined {
+  if (explicit) return existsSync(explicit) ? explicit : undefined
   const candidates =
     process.platform === 'win32'
       ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
@@ -277,7 +285,5 @@ function chromePath(explicit?: string): string {
             '/usr/bin/chromium',
             '/usr/bin/chromium-browser',
           ]
-  const found = candidates.find(existsSync)
-  if (!found) throw new Error('Google Chrome is required. Install it or set RITOKO_CHROME_PATH.')
-  return found
+  return candidates.find(existsSync)
 }

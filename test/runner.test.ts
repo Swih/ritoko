@@ -10,7 +10,7 @@ import { parseCsv, readItems } from '../src/engine/items.ts'
 import { Ledger } from '../src/engine/ledger.ts'
 import { Runner } from '../src/engine/runner.ts'
 import { Workflow, type WorkflowInput } from '../src/engine/schema.ts'
-import { check, Store } from '../src/engine/store.ts'
+import { check, Store, UNSCOPED } from '../src/engine/store.ts'
 import { api } from './support/api.ts'
 
 const resources: { root: string; ledger: Ledger }[] = []
@@ -440,7 +440,9 @@ describe('safe batch execution', () => {
     f.ledger.updateItem(run.id, 0, { status: 'review', committed: true })
     f.state.absent.add('#name')
     expect((await f.runner.resume(run.id)).status).toBe('needs_repair')
-    await f.runner.resolve(run.id, 'a@example.test', 'done', 'Found the customer on the site')
+    await f.runner.resolve(run.id, 'a@example.test', 'done', 'Found the customer on the site', {
+      confirmChecked: true,
+    })
     expect(f.ledger.run(run.id).status).toBe('paused')
     await f.runner.repair(run.id, 'name', target('#new-name'))
     expect((await f.runner.resume(run.id)).status).toBe('done')
@@ -545,9 +547,137 @@ describe('safe batch execution', () => {
     await expect(f.runner.resolve(blocked.report.runId, 'a@example.test', 'done', 'exists')).rejects.toThrow(
       'original',
     )
-    await f.runner.resolve(run.id, 'a@example.test', 'done', 'Matched email and name in customer list')
+    await f.runner.resolve(run.id, 'a@example.test', 'done', 'Matched email and name in customer list', {
+      confirmChecked: true,
+    })
     expect((await f.runner.resume(blocked.report.runId)).report.counts).toEqual({ skipped: 2 })
     expect(f.state.clicks).toHaveLength(0)
+  })
+
+  it('reports a resolution by hand as unverified until the workflow verifies the row itself', async () => {
+    const f = await fixture()
+    const run = f.seed()
+    for (const idx of [0, 1]) f.ledger.updateItem(run.id, idx, { status: 'review', committed: true })
+    await expect(f.runner.resolve(run.id, 'b@example.test', 'failed', 'Not on the site')).rejects.toThrow(
+      'creates a duplicate if the record already exists',
+    )
+    const report = await f.runner.resolve(run.id, 'a@example.test', 'done', 'Found on the site', {
+      confirmChecked: true,
+    })
+    expect(report.items[0]).toEqual({
+      idx: 0,
+      key: 'a@example.test',
+      status: 'done',
+      cause: null,
+      message: 'Manually resolved (unverified): Found on the site',
+      evidence: null,
+      resolution: { by: 'manual', verified: false, note: 'Found on the site' },
+    })
+    expect(report.items[1]?.resolution).toBeUndefined()
+    expect(report.manualResolutions).toBe(1)
+    await f.runner.resolve(run.id, 'b@example.test', 'failed', 'Not on the site', { confirmChecked: true })
+    expect(f.runner.report(run.id).manualResolutions).toBe(2)
+    const resumed = await f.runner.resume(run.id)
+    // b is submitted again, as its resolution announced, and is now verified by the workflow.
+    expect(f.state.clicks).toEqual(['#submit'])
+    expect(resumed.report.items.map((i) => [i.status, i.resolution?.by, i.message])).toEqual([
+      ['done', 'manual', 'Manually resolved (unverified): Found on the site'],
+      ['done', undefined, null],
+    ])
+    expect(resumed.report.manualResolutions).toBe(1)
+    expect(f.ledger.events(run.id, 'resolve')).toHaveLength(2)
+  })
+
+  it('warns when a run shares its keys with every scope of the workflow', async () => {
+    const f = await fixture({ params: { input: {}, account: { required: false, default: '' } } })
+    const unscoped = await f.start('')
+    expect(unscoped.report.warnings).toEqual([UNSCOPED])
+    expect(f.runner.report(unscoped.report.runId).warnings).toEqual([UNSCOPED])
+    // The case the warning is about: another destination's run skips the keys the unscoped run completed.
+    const other = await f.start('account-b')
+    expect(other.report.counts).toEqual({ skipped: 2 })
+    expect(other.report.warnings).toEqual([])
+    expect(f.state.clicks).toHaveLength(2)
+    const { warnings } = await f.store.save({
+      ...f.wf,
+      items: { from: '{{param.input}}', key: '{{item.Email}}' },
+    })
+    expect(warnings).toContain(UNSCOPED)
+    expect((await f.start('account-c')).report.warnings).toEqual([UNSCOPED])
+  })
+
+  it('journals the first fallback match of each step and flags rows submitted through a commit fallback', async () => {
+    const moved = (old: string, css: string) => ({
+      primary: { by: 'css' as const, css: old },
+      fallbacks: [{ by: 'css' as const, css }],
+    })
+    const f = await fixture({
+      item: [
+        { id: 'form', do: 'goto', url: 'https://example.test/form' },
+        { id: 'email', do: 'fill', target: moved('#old-email', '#email'), value: '{{item.Email}}' },
+        { id: 'submit', do: 'click', target: moved('#old-submit', '#submit'), commit: true },
+        { id: 'verify', do: 'expect', target: target('#ok'), text: 'Created {{item.Email}}', timeoutMs: 20 },
+      ],
+    })
+    f.state.absent.add('#old-email')
+    f.state.absent.add('#old-submit')
+    const done = await f.start()
+    expect(done.report.counts).toEqual({ done: 2 })
+    // What gets clicked is unchanged: the fallback that matches exactly one element.
+    expect(f.state.clicks).toEqual(['#submit', '#submit'])
+    const fallbacks = [
+      { stepId: 'email', index: 1, selector: 'css({"css":"#email"})' },
+      { stepId: 'submit', index: 1, selector: 'css({"css":"#submit"})', commit: true },
+    ]
+    expect(f.ledger.events(done.report.runId, 'fallback')).toEqual(fallbacks)
+    expect(done.report.fallbacks).toEqual(fallbacks)
+    expect(done.report.warnings).toEqual([
+      'Commit step "submit" matched through fallback 1, css({"css":"#submit"}), instead of its primary selector: check that it is the intended submit control and look at a submitted record.',
+    ])
+    const note =
+      'Submitted through fallback 1 of commit step "submit", css({"css":"#submit"}), not its primary selector: check that it is the intended submit control.'
+    expect(done.report.items.map((i) => i.message)).toEqual([note, note])
+
+    const unconfirmed = await fixture({
+      item: [
+        { id: 'submit', do: 'click', target: moved('#old-submit', '#submit'), commit: true },
+        { id: 'verify', do: 'expect', text: 'never shown', timeoutMs: 1 },
+      ],
+    })
+    unconfirmed.state.absent.add('#old-submit')
+    const review = await unconfirmed.start()
+    expect(review.report.items.map((i) => i.message)).toEqual([
+      `verify: Expected text "never shown" — ${note}`,
+      `verify: Expected text "never shown" — ${note}`,
+    ])
+  })
+
+  it('journals a step fallback once per run, also when another process resumes it', async () => {
+    const f = await fixture({
+      item: [
+        { id: 'form', do: 'goto', url: 'https://example.test/form' },
+        {
+          id: 'email',
+          do: 'fill',
+          target: { primary: { by: 'css', css: '#old-email' }, fallbacks: [{ by: 'css', css: '#email' }] },
+          value: '{{item.Email}}',
+        },
+        { id: 'name', do: 'fill', target: target('#name'), value: '{{item.Name}}' },
+        { id: 'submit', do: 'click', target: target('#submit'), commit: true },
+        { id: 'verify', do: 'expect', target: target('#ok'), text: 'Created {{item.Email}}', timeoutMs: 20 },
+      ],
+    })
+    f.state.absent.add('#old-email')
+    f.state.absent.add('#name')
+    const paused = await f.start()
+    expect(paused.status).toBe('needs_repair')
+    const cold = new Runner({ page: async () => f.page }, f.ledger, f.store, join(f.root, 'runs'))
+    await cold.repair(paused.report.runId, 'name', target('#new-name'))
+    const done = await cold.resume(paused.report.runId)
+    expect(done.status).toBe('done')
+    expect(done.report.fallbacks).toEqual([{ stepId: 'email', index: 1, selector: 'css({"css":"#email"})' }])
+    expect(done.report.warnings).toEqual([])
+    expect(done.report.items.map((i) => i.message)).toEqual([null, null])
   })
 
   it('requires evidence before resolving and permits retry only after confirmed non-submission', async () => {
@@ -555,7 +685,9 @@ describe('safe batch execution', () => {
     const run = f.seed()
     f.ledger.updateItem(run.id, 0, { status: 'review', committed: true })
     await expect(f.runner.resolve(run.id, 'a@example.test', 'failed', '')).rejects.toThrow('note')
-    await f.runner.resolve(run.id, 'a@example.test', 'failed', 'No customer with this email on the site')
+    await f.runner.resolve(run.id, 'a@example.test', 'failed', 'No customer with this email on the site', {
+      confirmChecked: true,
+    })
     expect((await f.runner.resume(run.id)).status).toBe('done')
     expect(f.state.clicks).toHaveLength(2)
   })
@@ -755,6 +887,30 @@ describe('journal and workflow safety', () => {
     ledger.updateRun('old', { vars: { token: 't' } })
     expect(ledger.items('old')[0]?.vars).toEqual({ id: 'o-1' })
     expect(ledger.run('old').vars).toEqual({ token: 't' })
+  })
+
+  it('migrates resolutions made before provenance as manual and unverified', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ritoko-test-'))
+    const file = join(root, 'journal.db')
+    const legacy = new Ledger(file)
+    const run = legacy.createRun('demo', 1, {})
+    legacy.addItems(run.id, [
+      { key: 'a', data: {} },
+      { key: 'b', data: {} },
+    ])
+    legacy.db.exec('ALTER TABLE items DROP COLUMN resolution')
+    legacy.db
+      .prepare(
+        "UPDATE items SET status = 'done', message = 'Manually resolved: Found it on the site' WHERE idx = 0",
+      )
+      .run()
+    legacy.db.close()
+    const ledger = new Ledger(file)
+    resources.push({ root, ledger })
+    expect(ledger.items(run.id).map((i) => i.resolution)).toEqual([
+      { by: 'manual', verified: false, note: 'Found it on the site' },
+      null,
+    ])
   })
 
   it('keeps remote download names inside the directory and rejects unsafe explicit names', () => {

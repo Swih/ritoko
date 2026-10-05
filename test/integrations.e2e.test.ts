@@ -171,7 +171,9 @@ it('recovers a compiled CLI killed after HTTP acceptance without Chrome or repea
     expect(proof.status).toBe(200)
     const evidence = await proof.json()
     expect(evidence).toEqual({ id: 'order-2', email: 'b@example.test', name: 'Bob', status: 'paid' })
-    await runner.resolve(runId, 'b@example.test', 'done', `Checked orders API: ${JSON.stringify(evidence)}`)
+    await runner.resolve(runId, 'b@example.test', 'done', `Checked orders API: ${JSON.stringify(evidence)}`, {
+      confirmChecked: true,
+    })
     expect((await runner.resume(runId)).status).toBe('done')
     expect((await runner.resume(rerun.report.runId)).report.counts).toEqual({ skipped: 3 })
     expect(service.orders).toHaveLength(3)

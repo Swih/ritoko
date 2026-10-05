@@ -375,4 +375,77 @@ describe('Ledger', () => {
       ]),
     ).toThrow('Duplicate item keys')
   })
+
+  /** A run whose two items may have been submitted: both wait for review. */
+  const reviewed = () => {
+    const ledger = new Ledger(':memory:')
+    const run = ledger.createRun('demo', 1, {})
+    ledger.addItems(run.id, [
+      { key: 'a', data: {} },
+      { key: 'b', data: {} },
+    ])
+    for (const idx of [0, 1]) ledger.updateItem(run.id, idx, { status: 'review', committed: true })
+    return { ledger, run }
+  }
+
+  it('resolves by hand only once the person confirmed checking the destination, for either outcome', () => {
+    const { ledger, run } = reviewed()
+    expect(() => ledger.resolve(run.id, 'a', 'failed', 'Not in the shop', { by: 'manual' })).toThrow(
+      'Resolving "a" as failed means the run will submit this row again on resume, which creates a duplicate if the record already exists at the destination.',
+    )
+    expect(() => ledger.resolve(run.id, 'a', 'done', 'In the shop', { by: 'manual' })).toThrow(
+      'later runs skip this row, so if it does not exist it is never submitted',
+    )
+    for (const status of ['done', 'failed'] as const)
+      expect(() =>
+        ledger.resolve(run.id, 'a', status, 'checked', { by: 'manual', confirmChecked: false }),
+      ).toThrow('Ask the user to check the record at the destination first, and pass confirmChecked: true')
+    expect(ledger.items(run.id)[0]).toMatchObject({ status: 'review', committed: true, resolution: null })
+    expect(ledger.events(run.id, 'resolve')).toEqual([])
+  })
+
+  it('records who resolved an item and whether it was verified, until a later status replaces it', () => {
+    const { ledger, run } = reviewed()
+    ledger.resolve(run.id, 'a', 'done', 'Order 12 found in the shop', { by: 'manual', confirmChecked: true })
+    expect(() => ledger.resolve(run.id, 'b', 'failed', 'No order', { by: 'reconcile' })).toThrow('evidence')
+    ledger.resolve(run.id, 'b', 'failed', 'No order for b', {
+      by: 'reconcile',
+      evidence: 'GET /orders?email=b returned []',
+    })
+    const [a, b] = ledger.items(run.id)
+    expect(a).toMatchObject({
+      status: 'done',
+      committed: true,
+      message: 'Manually resolved (unverified): Order 12 found in the shop',
+      resolution: { by: 'manual', verified: false, note: 'Order 12 found in the shop' },
+    })
+    expect(b).toMatchObject({
+      status: 'failed',
+      committed: false,
+      message: 'Reconciled (verified): No order for b',
+      resolution: { by: 'reconcile', verified: true, note: 'No order for b' },
+    })
+    expect(ledger.events(run.id, 'resolve')).toEqual([
+      {
+        key: 'a',
+        status: 'done',
+        note: 'Order 12 found in the shop',
+        by: 'manual',
+        verified: false,
+        at: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
+      },
+      {
+        key: 'b',
+        status: 'failed',
+        note: 'No order for b',
+        by: 'reconcile',
+        verified: true,
+        evidence: 'GET /orders?email=b returned []',
+        at: expect.any(String),
+      },
+    ])
+    // Retrying b makes its next status the workflow's own, not the resolution's.
+    ledger.updateItem(run.id, 1, { status: 'running', message: null })
+    expect(ledger.items(run.id).map((i) => i.resolution?.by ?? null)).toEqual(['manual', null])
+  })
 })

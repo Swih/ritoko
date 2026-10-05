@@ -234,7 +234,7 @@ describe('http steps', () => {
     const first = await f.start()
     expect(first.report.counts).toEqual({ review: 2 })
     for (const { key } of first.report.items)
-      await f.runner.resolve(first.report.runId, key, 'failed', 'Not in the shop')
+      await f.runner.resolve(first.report.runId, key, 'failed', 'Not in the shop', { confirmChecked: true })
     expect((await f.runner.resume(first.report.runId)).report.counts).toEqual({ done: 2 })
     const keys = site.seen.filter((r) => r.path === '/once').map((r) => r.headers['idempotency-key'])
     expect(keys).toHaveLength(4)

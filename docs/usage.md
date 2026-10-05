@@ -9,6 +9,8 @@ This guide covers the configuration and recovery details behind the [Ritoko READ
 3. **Replay.** Ritoko executes without a model and journals every item in SQLite. Each run keeps its workflow definition and input rows.
 4. **Repair.** If a selector changed, the run pauses with the page left open. Before submission, the form restarts in full. After submission, only verification resumes on the same document; otherwise the item is held for review. A missing verification target pauses only the run's first submitted item, once. Any other miss after submission, or expected text absent from the page (such as an error page), holds the item for review and the batch continues.
 
+A step whose primary selector no longer matches can still match one of its recorded fallbacks, which must also match exactly one element; later rows then start from that fallback. The direct runner journals a `fallback` event the first time each step of a run matches this way, and the report lists these steps under `fallbacks`. On the commit step this is also a run warning, and the message of each row submitted through the fallback says so: check that it is the intended submit control. Host mode does not report fallbacks yet.
+
 | Status | Meaning |
 |---|---|
 | `done` | Verified by the workflow's `expect` steps |
@@ -17,6 +19,29 @@ This guide covers the configuration and recovery details behind the [Ritoko READ
 | `skipped` | Already confirmed under the same workflow, scope and key; no new submission |
 
 A run is `done` only when all items are confirmed or skipped and its final checks passed. `partial` means some items failed or need review; `stopped` means execution could not continue. The CLI returns exit code 2 for these outcomes and for repair pauses.
+
+Results also carry `warnings` when something can make a run skip or misdirect rows: an empty `items.scope` (see [Safe workflow contract](#safe-workflow-contract)) or a commit step matched through a fallback selector. The CLI prints them under its summary line; MCP results include them.
+
+## Resolving a review item
+
+A `review` item may or may not have reached the destination, and Ritoko does not guess. Resolve it only after someone looked at the business record at the destination:
+
+- `done`: the record exists. The item counts as submitted and later runs skip its key; if the record does not exist after all, it is never submitted.
+- `failed`: the record does not exist. The next resume (`run_resume`, or `host_next` for a host run), or a new run with the same key, submits the row again; if the record does exist, that creates a duplicate.
+
+Both outcomes need an evidence note and an explicit confirmation that the destination was checked: `confirmChecked: true` in MCP `run_resolve`, `--confirm-checked` on the command line. Without it the call is refused and nothing changes. An agent asks the user to check and never sets the confirmation on its own.
+
+```bash
+node bin/ritoko.mjs resolve <runId> <key> done --note "Order 1042 found in the back office" --confirm-checked
+```
+
+Ritoko cannot see that check, so it records the resolution as unverified: the item message starts with `Manually resolved (unverified):`, the report item carries `resolution: {by: "manual", verified: false, note}`, the run counts `manualResolutions`, and the journal keeps a `resolve` event with the key, outcome, note and time. A `failed` item that is then submitted again and verified by the workflow has the workflow's status again; its `resolve` event stays in the journal. A duplicate-held item is resolved in its original run first.
+
+## Checking the installation: `ritoko doctor`
+
+`node bin/ritoko.mjs doctor`, or the MCP tool `doctor`, checks the Node.js version (24 or newer), that `node:sqlite` and `playwright-core` load, that the Ritoko home is writable or can be created, the journal (`PRAGMA integrity_check`, and leases left by a process that exited or stopped responding), the `RITOKO_BROWSER` value and the Chrome executable. Each check is `pass`, `warn` or `fail`, with a one-line fix for the last two; `--json` prints `{ok, checks}`, as the MCP tool returns. The exit code is 1 when a check fails, otherwise 0. A missing Chrome executable is a warning with your own Chrome, which Ritoko attaches to rather than launches, and a failure when a separate Chrome must be launched (`RITOKO_BROWSER=clean`, headless runs).
+
+The doctor starts no browser and opens the journal read-only. It does not create the home or the journal; it writes only a temporary folder, removed at once, to test that an existing home is writable, and reading the journal can leave SQLite's `ritoko.db-wal` and `ritoko.db-shm` side files, which Ritoko removes the next time it closes its journal. The `bin/ritoko.mjs` launcher itself stops on a Node.js older than 24 and installs missing dependencies before running any command, so through it the Node.js and dependency checks catch a damaged installation or a Node.js build without `node:sqlite`.
 
 ## Long-running tool calls
 
@@ -101,8 +126,9 @@ node bin/ritoko.mjs import examples/rpa-challenge.json
 node bin/ritoko.mjs run rpa-challenge
 node bin/ritoko.mjs report
 node bin/ritoko.mjs resume <runId>
-node bin/ritoko.mjs resolve <runId> <key> done --note "Matched the record on the site"
+node bin/ritoko.mjs resolve <runId> <key> done --note "Matched the record on the site" --confirm-checked
 node bin/ritoko.mjs cancel <runId>
+node bin/ritoko.mjs doctor
 node bin/ritoko.mjs browser-close
 ```
 
@@ -114,7 +140,7 @@ The direct browser runner connects to the user's Chrome by default, after remote
 
 `--repeat` explicitly requests replay of previously confirmed items, including when their data changed. It does not bypass review holds. Use it only when repeating the business action is intentional. For host runs, use `host_next` rather than direct `resume`.
 
-The CLI's `<runId>` and `<key>` are placeholders. `resolve ... done` confirms that the effect exists; `resolve ... failed` confirms that it did not occur and allows a safe retry. Provide an evidence note in either case. See [update policies](release.md#maintaining-distributed-versions) when switching Git, npm or client-managed versions.
+The CLI's `<runId>` and `<key>` are placeholders. `resolve ... done` records that the effect exists; `resolve ... failed` records that it did not occur, and the next resume submits the row again. Both need an evidence note and `--confirm-checked` once the record was checked at the destination (see [Resolving a review item](#resolving-a-review-item)). See [update policies](release.md#maintaining-distributed-versions) when switching Git, npm or client-managed versions.
 
 ## Host batches and mixed workflows
 
@@ -153,11 +179,12 @@ Hints do not become executable API steps automatically. Verify the endpoint, aut
 - `wait`, `expect` and `download` accept `timeoutMs` up to 900000 (15 min) for slow generations; other steps stay capped at 120000. Progress notifications are sent at least every 15 s, even inside one long item.
 - Keep setup repeatable and free of irreversible changes. Prefer goto at the beginning of each item so a partly filled form can be rebuilt. Autosave counts as a write; split operations with several irreversible effects into separate workflows.
 - Deduplication uses workflow name + `items.scope` + business key. Set scope from destination/account/operation params, never the CSV filename. Include a period in the key for recurring operations. Without an explicit repeat request, different data under a completed key is blocked rather than silently skipped.
+- An empty scope, or one whose params render empty, shares its keys with every scope of the workflow: a key completed for one destination or account is skipped for another instead of submitted, in both directions. `workflow_save` warns when `items.scope` is empty, and every result of a run with an empty scope carries the same warning.
 - Input is .xlsx, or .csv in UTF-8 or else Windows-1252 (Excel's classic CSV export), separated by `,` or `;`. Excel number formats are not applied (`07001` reads as `7001`, `15%` as `0.15`): format identifier columns as Text. Hidden and filtered-out rows are read too. Formulas use the result Excel saved; a referenced cell holding a formula error or no saved result is rejected as empty. Never store credentials in a workflow: declare a secret param, read from an environment variable at run time and never stored in the workflow or journal.
 - File paths from item data (`upload` of `{{item.File}}`) must stay inside the input file's folder, or the run folder for a downloaded or extracted input; `goto` opens only http(s) URLs. Agents pass absolute paths; the CLI resolves relative ones against its working directory.
 - The whole input is validated before processing. Duplicate/empty keys, missing referenced values and malformed headers are rejected. Rows are frozen in the journal; changing the source file does not alter a resumed batch.
 - A recorded first submission already changed the site. After saving its workflow, call MCP `run_adopt` with the exact full row and evidence note. This runs only confirmation steps and journals the row so replay skips it. Do not replay it before adopting or resolving it.
-- Resolving done confirms the effect exists. Resolving failed confirms it did not occur and enables retry. Every decision requires an evidence note and is logged. For a duplicate-held item, resolve its original run first.
+- Resolving done records that the effect exists. Resolving failed records that it did not occur, and the row is submitted again on resume. Every decision requires an evidence note and a confirmation that the destination was checked, and is logged as unverified (see [Resolving a review item](#resolving-a-review-item)). For a duplicate-held item, resolve its original run first.
 - One operation controls the browser at a time. Concurrent CLI/MCP attempts get a busy error naming the active run; a lease left by a process that died or stopped responding is recovered automatically. Read-only reports and page snapshots work during a run.
 
 The journal protects actions executed through this Ritoko installation. It cannot prevent independent submissions, guarantee that a website is idempotent, or infer success from a generic message. Workflows need business checks specific to the site. Legacy runs without a frozen definition resume only if their workflow version still matches; otherwise inspect their outcomes first.

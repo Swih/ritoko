@@ -39,7 +39,7 @@ The loopback carry page lives for at most five minutes and carries the plan in t
 
 `run_report` and `run_list` expose `driver: "direct" | "host"`. Resume with the matching driver. Host resume retries safe failed rows on a terminal run only when called without results, and rechecks rows held by another run after that original outcome was resolved. It preserves the frozen workflow and rows. Host mode does not offer repeat or selector repair yet.
 
-**Safety**: the commit step may be an `http` or `mcp` step. Once it starts, an interrupted or failed item is `review`, never resent: resolve it by checking the record, then `run_resolve`. Only reads may follow it. Secrets rendered into a request, a server or a message are masked everywhere Ritoko keeps something; the journal holds for each call one line (method, URL without its query, status, names of saved variables and files), never a body or a header.
+**Safety**: the commit step may be an `http` or `mcp` step. Once it starts, an interrupted or failed item is `review`, never resent: the user checks the record, then `run_resolve` with `confirmChecked: true` once they confirmed that check (a `failed` resolution submits the row again on resume). Only reads may follow it. Secrets rendered into a request, a server or a message are masked everywhere Ritoko keeps something; the journal holds for each call one line (method, URL without its query, status, names of saved variables and files), never a body or a header.
 
 ## Optional document reading
 

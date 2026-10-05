@@ -37,20 +37,33 @@ function harness(stop: () => Promise<void>) {
   const store = new Store(join(root, 'workflows'))
   const browser = new Browser({ profile: join(root, 'profile'), headless: true })
   cleanup.push(async () => {
-    await browser.shutdown().catch(() => {})
+    let shutdownError: unknown
+    try {
+      await browser.shutdown()
+    } catch (error) {
+      shutdownError = error
+    }
     await stop()
     ledger.db.close()
     // Chrome exits asynchronously and may briefly retain profile files on Windows.
     if (!root.startsWith(join(tmpdir(), 'ritoko-e2e-'))) throw new Error('Unsafe cleanup path')
+    let removed = false
+    let removalError: unknown
     for (let i = 0; i < 30; i++) {
       try {
         rmSync(root, { recursive: true, force: true })
-        return
-      } catch {
+        removed = true
+        break
+      } catch (error) {
+        removalError = error
         await delay(100)
       }
     }
-    throw new Error(`Chrome did not release the test profile: ${root}`)
+    if (shutdownError || !removed)
+      throw new AggregateError(
+        [shutdownError, ...(!removed ? [removalError] : [])].filter(Boolean),
+        `Chrome cleanup failed for the test profile: ${root}`,
+      )
   })
   return { root, ledger, store, browser }
 }

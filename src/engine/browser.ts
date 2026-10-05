@@ -5,8 +5,11 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { type BrowserContext, type Browser as Connection, chromium, type Page } from 'playwright-core'
+import { bounded } from './download.ts'
 import { Ledger, processAlive } from './ledger.ts'
 import { paths } from './paths.ts'
+
+const NO_ENDPOINT = 'remote debugging was never enabled in this Chrome'
 
 /** The user's everyday Chrome profile folder, where Chrome writes DevToolsActivePort once remote debugging is allowed. */
 export function userChromeData(): string {
@@ -195,8 +198,10 @@ export class Browser {
     let file: string
     try {
       file = await readFile(join(dir, 'DevToolsActivePort'), 'utf8')
-    } catch {
-      return 'remote debugging was never enabled in this Chrome'
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? NO_ENDPOINT
+        : 'its DevToolsActivePort file could not be read'
     }
     try {
       const [port, route] = file.trim().split(/\r?\n/)
@@ -209,17 +214,27 @@ export class Browser {
         !/^\/devtools\/browser\/[\w-]+$/.test(route)
       )
         return 'its DevToolsActivePort file is invalid'
-      this.#connection = await chromium.connectOverCDP(`ws://127.0.0.1:${port}${route}`, {
+      const connection = await chromium.connectOverCDP(`ws://127.0.0.1:${port}${route}`, {
         timeout,
         isLocal: true,
       })
-      this.#context = this.#connection.contexts()[0]
-      this.#connection.on('disconnected', () => {
+      const context = connection.contexts()[0]
+      if (!context) {
+        await bounded(connection.close(), 'Disconnecting unusable Chrome', Math.min(timeout, 5_000)).catch(
+          () => {},
+        )
+        return 'it exposes no browser context'
+      }
+      this.#connection = connection
+      this.#context = context
+      connection.on('disconnected', () => {
+        // A late disconnect from an earlier client must not erase its replacement.
+        if (this.#connection !== connection) return
         this.#connection = undefined
         this.#context = undefined
         this.#page = undefined
       })
-      return this.#context ? true : 'it exposes no browser context'
+      return true
     } catch (error) {
       const message = (error as Error).message
       return /ECONNREFUSED/.test(message)
@@ -261,18 +276,64 @@ export class Browser {
    */
   async shutdown(): Promise<void> {
     // The user's own Chrome is never closed: Ritoko only disconnects from it.
-    if (this.#shared || (!this.#connection && this.mode !== 'dedicated')) return this.close()
+    if (this.#shared || this.mode === 'chrome') return bounded(this.close(), 'Disconnecting Chrome', 5_000)
     if (this.#launchFailed) return this.#stopChild()
     // Closing must never launch Chrome. An explicit dedicated browser-close may attach to an existing one.
-    if (!this.#connection && (await this.#attach()) !== true) return this.#stopChild()
-    const session = await this.#connection?.newBrowserCDPSession()
-    const info = await session?.send('SystemInfo.getProcessInfo').catch(() => undefined)
-    const pid = info?.processInfo.find((p) => p.type === 'browser')?.id
-    await session?.send('Browser.close').catch(() => {})
-    await this.close().catch(() => {})
-    const deadline = Date.now() + 15_000
-    while (pid && processAlive(pid) && Date.now() < deadline) await delay(100)
-    await this.#stopChild()
+    if (!this.#connection?.isConnected()) {
+      const deadline = Date.now() + 10_000
+      let attached: true | string = NO_ENDPOINT
+      do {
+        // Another client (e.g. the MCP process) may just have disconnected. Give its existing
+        // Chrome time to answer CDP without ever launching a replacement.
+        attached = await this.#attach(this.profile, Math.max(1, Math.min(5_000, deadline - Date.now())))
+        if (attached === true || attached === NO_ENDPOINT) break
+        if (Date.now() < deadline) await delay(Math.min(100, deadline - Date.now()))
+      } while (Date.now() < deadline)
+      if (attached !== true) {
+        const owned = Boolean(this.#child)
+        await this.#stopChild()
+        if (!owned && attached !== NO_ENDPOINT)
+          throw new Error(`Could not close dedicated Chrome: ${attached}`)
+        return
+      }
+    }
+    const connection = this.#connection
+    if (!connection) throw new Error('Could not confirm dedicated Chrome shutdown: connection disappeared')
+    const owned = Boolean(this.#child)
+    let pid: number | undefined
+    let closeError: unknown
+    let disconnectError: unknown
+    try {
+      const session = await bounded(connection.newBrowserCDPSession(), 'Opening shutdown CDP session', 5_000)
+      const info = await bounded(
+        session.send('SystemInfo.getProcessInfo'),
+        'Reading Chrome process info',
+        5_000,
+      ).catch(() => undefined)
+      pid = info?.processInfo.find((p) => p.type === 'browser')?.id
+      await bounded(session.send('Browser.close'), 'Closing Chrome', 5_000)
+    } catch (error) {
+      closeError = error
+    } finally {
+      try {
+        await bounded(connection.close(), 'Disconnecting shutdown CDP client', 5_000).catch((error) => {
+          disconnectError = error
+        })
+        const deadline = Date.now() + 15_000
+        while (pid && processAlive(pid) && Date.now() < deadline) await delay(100)
+      } finally {
+        // Even a connected but frozen CDP endpoint must not strand our owned launch.
+        await this.#stopChild()
+      }
+    }
+    if (pid && processAlive(pid))
+      throw new Error('Dedicated Chrome did not exit within 15 seconds of shutdown')
+    if (!pid && closeError && !owned)
+      throw new Error('Could not confirm dedicated Chrome shutdown: Browser.close failed', {
+        cause: closeError,
+      })
+    if (disconnectError)
+      throw new Error('Could not disconnect the shutdown CDP client', { cause: disconnectError })
   }
 }
 

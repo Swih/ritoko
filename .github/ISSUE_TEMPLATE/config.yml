@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A business or team workflow, in private
+    url: https://ritoko.com/contact
+    about: "Describe a routine your team repeats without opening a public issue. Use this if the workflow involves client, customer or employer details. Please leave out passwords and private customer data."

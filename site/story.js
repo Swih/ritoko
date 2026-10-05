@@ -143,7 +143,7 @@ export function initHeroStory() {
           ? 'First example · with your agent'
           : saved
             ? 'Ready for a new list'
-            : 'Saved replay · 0 model calls',
+            : 'Direct browser replay · 0 model calls',
       )
       fields.forEach((field, i) => {
         put(field.querySelector('[data-hero-value]'), i < filled ? values[i] : '—')

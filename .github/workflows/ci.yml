@@ -8,7 +8,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # A branch push and its PR validate the same head; run one matrix instead of two.
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -36,6 +37,10 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
+      - run: pnpm release:check
+      - run: node scripts/site/build.mjs
+      - run: node scripts/site/preflight.mjs
+      - run: git diff --exit-code -- site
 
   e2e:
     name: e2e, real Chrome (${{ matrix.os }})

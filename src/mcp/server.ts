@@ -9,6 +9,7 @@ import type { Page } from 'playwright-core'
 import { z } from 'zod'
 import { Browser } from '../engine/browser.ts'
 import { withDialogs } from '../engine/dialog.ts'
+import { diagnose } from '../engine/doctor.ts'
 import { download } from '../engine/download.ts'
 import { Host } from '../engine/host.ts'
 import { Ledger, processAlive } from '../engine/ledger.ts'
@@ -28,7 +29,7 @@ const network = new NetworkCapture()
 /** Selectors of password inputs filled while recording: a workflow must not store their literal values. */
 const passwordFields = new Set<string>()
 
-const server = new McpServer({ name: 'ritoko', version: '0.1.1' })
+const server = new McpServer({ name: 'ritoko', version: '0.2.0' })
 
 /** Compact JSON without null fields: every result lands in the agent's context. */
 const block = (value: unknown) => ({
@@ -117,8 +118,11 @@ function summary(
     driver: report.driver,
     workflow: report.workflow,
     message: report.message,
+    ...(report.warnings.length > 0 && { warnings: report.warnings }),
     durationMs: report.durationMs,
     counts: report.counts,
+    ...(report.manualResolutions > 0 && { manualResolutions: report.manualResolutions }),
+    ...(report.fallbacks.length > 0 && { fallbacks: report.fallbacks }),
     dir: report.dir,
     files: Object.fromEntries(Object.entries(report.files).map(([name, file]) => [name, local(file)])),
     [items === 'all' ? 'items' : 'problems']: shown,
@@ -687,23 +691,46 @@ tool(
 )
 
 tool(
+  'run_reconcile',
+  {
+    title: 'Reconcile an uncertain write',
+    description:
+      'Reads the direct run frozen ensure lookup for one original review item. Verified presence becomes done; explicit verified absence becomes failed for a later run_resume. Never runs setup or submits. Errors, missing fields, conflicting records or ambiguous predicates leave review unchanged. Requires ensure saved before the run; host runs are unsupported.',
+    inputSchema: { runId: z.string(), key: z.string() },
+    annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  async ({ runId, key }) => {
+    known(runId)
+    const report = await runner.reconcile(runId, key)
+    return text({
+      ...summary(report, report.status),
+      reconciled: report.items.find((item) => item.key === key),
+    })
+  },
+)
+
+tool(
   'run_resolve',
   {
     title: 'Resolve a review item',
     description:
-      "Records the outcome of a review item once the site's business record was checked: done confirms the effect exists, failed confirms it did not happen and lets run_resume retry it. Only when the result is established, with a note describing the evidence; otherwise leave it in review. A duplicate-held item is resolved in its original run first.",
+      "Records a review item's outcome once the user checked the business record at the destination. done: the effect exists; later runs skip the row. failed: it did not happen; the run will submit that row again on resume, creating a duplicate if the record does exist. First ask the user to check the destination; pass confirmChecked: true only after they confirm, never on your own. The note describes the evidence; reports mark the item resolved by hand (unverified). Otherwise leave it in review. A duplicate-held item is resolved in its original run first.",
     inputSchema: {
       runId: z.string(),
       key: z.string(),
       status: z.enum(['done', 'failed']),
       note: z.string().min(1),
+      confirmChecked: z
+        .boolean()
+        .default(false)
+        .describe('true only once the user confirmed checking the record at the destination.'),
     },
     annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
-  async ({ runId, key, status, note }) => {
+  async ({ runId, key, status, note, confirmChecked }) => {
     known(runId)
     try {
-      const report = await runner.resolve(runId, key, status, note)
+      const report = await runner.resolve(runId, key, status, note, { confirmChecked })
       return text(summary(report, report.status))
     } catch (error) {
       const item = runner.ledger.items(runId).find((i) => i.key === key)
@@ -790,6 +817,20 @@ tool(
   },
 )
 
+tool(
+  'doctor',
+  {
+    title: 'Check the installation',
+    description:
+      'Read-only. Checks Node.js, node:sqlite, the Ritoko home, the journal (integrity, stale leases), playwright-core, RITOKO_BROWSER and the Chrome executable: each pass, warn or fail with a fix. Starts no browser. Use it when Ritoko cannot start a run or open Chrome, or the user asks to check the setup.',
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  async () => {
+    const checks = await diagnose()
+    return text({ ok: !checks.some((c) => c.status === 'fail'), checks })
+  },
+)
+
 const host = new Host(runner.ledger, store)
 
 tool(
@@ -805,7 +846,11 @@ tool(
     },
     annotations: { destructiveHint: true, openWorldHint: true },
   },
-  async ({ workflow, params, parallel }) => text(await host.start(workflow, params, { parallel })),
+  async ({ workflow, params, parallel }) => {
+    const started = await host.start(workflow, params, { parallel })
+    const { warnings } = runner.report(started.runId)
+    return text(warnings.length ? { ...started, warnings } : started)
+  },
 )
 
 tool(

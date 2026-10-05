@@ -1,0 +1,59 @@
+# Ritoko
+
+> Ritoko is an open-source (MIT) local MCP server, Claude Code and Codex plugin, and command-line tool. Your agent solves a browser, HTTP API or MCP task once; Ritoko saves it as a JSON workflow and replays it on the rows of a CSV or Excel file, keeping a journal for each item.
+
+Scope, stated plainly:
+
+- Replaying saved deterministic steps with the direct runner makes no model call. The first run, repairs, reading new documents and any MCP tool that itself calls a model still use one. In host mode your agent’s own tools do the work.
+- Every item has an outcome in a local SQLite journal. A write whose outcome is uncertain is held for review, not resubmitted automatically.
+- The journal only covers actions run through this installation and cannot see submissions made elsewhere. Ritoko does not promise “no duplicates”: that needs a correct business key, commit step and result check in the workflow.
+- No built-in OCR, and no CAPTCHA or anti-bot bypass. Requires Node.js 24 or newer, and Google Chrome for browser workflows with the direct runner.
+
+## Guides
+
+- [Did my browser submission succeed before the automation crashed?](https://ritoko.com/guides/uncertain-writes-after-interruption): A timeout or crash does not prove that the submission failed. Check the destination for that exact business record before retrying. Ritoko holds a write interrupted after its commit boundary for review and resumes other eligible rows from its journal.
+- [How do I avoid duplicate records when I import the same CSV again?](https://ritoko.com/guides/avoid-duplicate-csv-imports): Identify each operation with a stable business key and destination scope, adopt any row already submitted during recording, and verify each result. Ritoko normally skips confirmed keys and holds uncertain writes, but its local journal does not guarantee that duplicates are impossible.
+- [Do I need an AI model to solve the same browser task on every run?](https://ritoko.com/guides/recurring-tasks-model-costs): A stable task with explicit actions and checks can run as a saved procedure. Ritoko’s direct replay engine does not call an LLM. Recording, repair, host orchestration and external tools that use models can still consume model usage or incur charges.
+- [How do I keep a recorded browser workflow useful when the page changes?](https://ritoko.com/guides/robust-browser-selectors): Record targets that identify the intended control by meaning and uniqueness, then verify the business result. Ritoko supports selector fallbacks and pauses eligible direct runs for deliberate repair. A changed submit target needs explicit confirmation before repair.
+- [How can I process a CSV or Excel file and resume halfway through?](https://ritoko.com/guides/resumable-csv-excel-batches): Define one verifiable operation per row, validate the input and keep a durable record of each outcome. Ritoko reads CSV and XLSX files, freezes the rows and workflow in its SQLite journal, and resumes the same run while keeping confirmed rows and holding uncertain writes.
+- [Should a repeated task use the browser, an HTTP API or an MCP tool?](https://ritoko.com/guides/browser-api-mcp-workflows): Use the supported interface whose business contract and permissions you can verify. Browser steps fit tasks exposed through a UI; HTTP steps fit documented endpoints; MCP steps reuse tools with known inputs and outputs. Ritoko can combine these paths under one workflow and journal.
+
+## Compare
+
+- [Ritoko or Playwright MCP for repeated browser work?](https://ritoko.com/compare/ritoko-vs-playwright-mcp): Choose Playwright MCP when an agent needs to inspect and explore a browser task. Choose Ritoko when the procedure is known and you want to replay structured rows with per-item outcome tracking. The tools can serve different stages of the same task.
+- [Should I save a Ritoko workflow or generate Playwright code?](https://ritoko.com/compare/ritoko-vs-playwright-codegen): Choose Playwright codegen when you want editable automation or test code and control over its application logic. Choose Ritoko when its supported workflow steps and built-in row journal fit a recurring spreadsheet operation. Both can execute saved actions without model inference.
+- [When should I use Ritoko rather than browser-use?](https://ritoko.com/compare/ritoko-vs-browser-use): Choose browser-use when you need an agent to work through unfamiliar or variable browser tasks. Choose Ritoko for a known, verifiable operation repeated over structured rows. browser-use also has saved-history replay, so replay alone is not the distinction.
+- [Should I use Stagehand or Ritoko for a recurring browser task?](https://ritoko.com/compare/ritoko-vs-stagehand): Choose Stagehand for browser automation that combines natural-language discovery with code. Choose Ritoko when supported saved steps and a local spreadsheet outcome journal fit the job. Both have ways to avoid model inference during repeated execution; Stagehand’s cache behavior depends on its version and path.
+- [When does a Ritoko batch fit better than a Skyvern workflow?](https://ritoko.com/compare/ritoko-vs-skyvern): Choose Skyvern when you want AI browser workflows and automatic agent fallback from cached code. Choose Ritoko for a known local procedure with explicit row checks and review holds after uncertain writes. Skyvern also documents replay without inference, so that feature alone does not separate them.
+- [How does Ritoko compare with taprun for saved browser tasks?](https://ritoko.com/compare/ritoko-vs-taprun): Both save browser tasks for local replay without a live model choosing every action. Ritoko focuses on CSV/XLSX rows, explicit business keys and a local recovery journal. taprun documents drift verification, script converters and uncertain-intent resolution. Check its engine licensing and exact recovery semantics before adopting it.
+
+## FAQ
+
+- [Ritoko FAQ](https://ritoko.com/faq): Ritoko saves verifiable browser, HTTP and MCP procedures and replays them with a local journal. These answers explain setup, model usage, spreadsheet inputs and the checks needed to recover uncertain writes.
+
+## Français
+
+- [Ma soumission dans le navigateur a-t-elle abouti avant l’arrêt ?](https://ritoko.com/fr/guides/uncertain-writes-after-interruption): Un délai dépassé ou un plantage ne prouve pas que la soumission a échoué. Vérifiez la destination pour cet enregistrement précis avant de réessayer. Ritoko met en revue les écritures interrompues après leur étape commit et reprend les autres lignes admissibles depuis son journal.
+- [Comment éviter les doublons en important à nouveau le même CSV ?](https://ritoko.com/fr/guides/avoid-duplicate-csv-imports): Identifiez chaque opération par une clé métier et un périmètre de destination stables, adoptez toute ligne déjà soumise pendant l’enregistrement et vérifiez chaque résultat. Ritoko ignore normalement les clés confirmées et met en revue les écritures incertaines, mais son journal local ne garantit pas l’absence de doublons.
+- [Faut-il un modèle d’IA pour résoudre la même tâche de navigateur à chaque fois ?](https://ritoko.com/fr/guides/recurring-tasks-model-costs): Une tâche stable, avec des actions et des contrôles explicites, peut être exécutée comme une procédure enregistrée. Le moteur de reprise directe de Ritoko n’appelle pas de LLM. L’enregistrement, la réparation, l’orchestration par l’hôte et les services externes utilisant des modèles peuvent encore consommer des ressources ou entraîner des frais.
+- [Comment garder un workflow navigateur utile quand la page change ?](https://ritoko.com/fr/guides/robust-browser-selectors): Choisissez des cibles identifiant le contrôle visé par son sens et son unicité, puis vérifiez le résultat métier. Ritoko propose des sélecteurs de repli et met en pause certaines reprises directes pour permettre une réparation réfléchie. Le remplacement d’une cible d’envoi exige une confirmation explicite.
+- [Comment traiter un CSV ou Excel et reprendre le lot à mi-parcours ?](https://ritoko.com/fr/guides/resumable-csv-excel-batches): Définissez une opération vérifiable par ligne, validez l’entrée et conservez une trace durable de chaque résultat. Ritoko lit les fichiers CSV et XLSX, fige les lignes et le workflow dans son journal SQLite et reprend le même lot en conservant les lignes confirmées et en mettant les écritures incertaines en revue.
+- [Une tâche répétitive doit-elle utiliser le navigateur, une API HTTP ou un outil MCP ?](https://ritoko.com/fr/guides/browser-api-mcp-workflows): Utilisez l’interface prise en charge dont vous pouvez vérifier le contrat métier et les autorisations. Les étapes navigateur conviennent aux tâches dans une interface graphique ; HTTP aux points d’accès documentés ; MCP aux outils dont les entrées et sorties sont connues. Ritoko peut réunir ces voies dans un même workflow et journal.
+- [FAQ Ritoko](https://ritoko.com/fr/faq): Ritoko enregistre des procédures navigateur, HTTP et MCP vérifiables et les rejoue avec un journal local. Ces réponses présentent l’installation, l’usage des modèles, les entrées tableur et les contrôles nécessaires pour reprendre des écritures incertaines.
+
+## Documentation
+
+- [README](https://github.com/Swih/ritoko#readme): install, how it works, evidence and current scope
+- [Advanced usage](https://github.com/Swih/ritoko/blob/main/docs/usage.md): client setup, CLI, browser choice, host mode and recovery
+- [Agent skill](https://github.com/Swih/ritoko/blob/main/skills/ritoko/SKILL.md): the instructions the plugin gives the agent
+- [Source code and issues](https://github.com/Swih/ritoko): bug reports and feature requests
+
+## On this site
+
+- [Use cases](https://ritoko.com/use-cases): six use cases: one measured run, one recorded run and four described patterns
+- [Watch a real run](https://ritoko.com/watch): a real-time recording of an interrupted batch, resumed and run again
+- [Measurements](https://ritoko.com/benchmarks): the RPA Challenge timings and the crash-and-resume test, with their boundaries
+
+## License
+
+- [MIT license](https://github.com/Swih/ritoko/blob/main/LICENSE)

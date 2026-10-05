@@ -1,0 +1,50 @@
+[
+  {
+    "id": "uncertain-write",
+    "painPoint": "Recover safely when a batch is interrupted after a possible submission.",
+    "queries": {
+      "en": "How can I resume a browser automation batch after a timeout without submitting the same record twice?",
+      "fr": "Comment reprendre un lot d’automatisation du navigateur après un délai dépassé sans soumettre deux fois le même enregistrement ?"
+    }
+  },
+  {
+    "id": "duplicate-import",
+    "painPoint": "Avoid creating duplicate records when importing the same CSV again.",
+    "queries": {
+      "en": "How do I avoid duplicate customer records when rerunning a CSV import that stopped halfway through?",
+      "fr": "Comment éviter les doublons de clients quand je relance un import CSV qui s’est arrêté à mi-parcours ?"
+    }
+  },
+  {
+    "id": "recurring-costs",
+    "painPoint": "Understand which repeated automation steps need an AI model and which can replay directly.",
+    "queries": {
+      "en": "Can a recurring browser or API automation run without calling an AI model for every row?",
+      "fr": "Une automatisation récurrente du navigateur ou d’API peut-elle traiter chaque ligne sans appeler un modèle d’IA ?"
+    }
+  },
+  {
+    "id": "selector-repair",
+    "painPoint": "Recover a browser workflow when a form or selector changes.",
+    "queries": {
+      "en": "What should a browser automation do when a website changes a form field or selector during a batch?",
+      "fr": "Que doit faire une automatisation du navigateur si un site modifie un champ ou un sélecteur pendant un lot ?"
+    }
+  },
+  {
+    "id": "frozen-input",
+    "painPoint": "Resume from the original input snapshot when a spreadsheet changes after a run starts.",
+    "queries": {
+      "en": "How can I make a resumed CSV or Excel automation batch use the same rows as the original run?",
+      "fr": "Comment faire pour qu’un lot CSV ou Excel repris utilise les mêmes lignes que lors du lancement initial ?"
+    }
+  },
+  {
+    "id": "api-mcp-workflow",
+    "painPoint": "Choose between direct API, connected MCP tools and browser automation for repeatable work.",
+    "queries": {
+      "en": "When should I automate a repeated task with an API or MCP tool instead of browser clicks?",
+      "fr": "Quand faut-il automatiser une tâche répétitive avec une API ou un outil MCP plutôt qu’avec des clics dans le navigateur ?"
+    }
+  }
+]

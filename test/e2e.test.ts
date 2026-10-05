@@ -13,7 +13,8 @@ import { Ledger } from '../src/engine/ledger.ts'
 import { candidates, resolve as locate } from '../src/engine/locate.ts'
 import { Runner } from '../src/engine/runner.ts'
 import { type Selector, Workflow } from '../src/engine/schema.ts'
-import { Store } from '../src/engine/store.ts'
+import { Store, UNSCOPED } from '../src/engine/store.ts'
+import { api } from './support/api.ts'
 import { lab } from './support/lab.ts'
 
 const cleanup: (() => Promise<void>)[] = []
@@ -131,11 +132,12 @@ describe('Chrome and real server effects', () => {
       item: [
         { id: 'open', do: 'goto', url: `${f.site.url}/upload-form` },
         { id: 'choose', do: 'upload', target: label('CSV'), file: '{{item.File}}', commit: true },
-        { id: 'confirmed', do: 'expect', text: 'Uploaded CSV', timeoutMs: 2000 },
+        // File selection starts navigation asynchronously; verify the receipt document explicitly.
+        { id: 'confirmed', do: 'expect', url: '/upload-file', text: 'Uploaded CSV', timeoutMs: 10_000 },
       ],
     })
     const first = await f.runner.start('auto-upload', { input })
-    expect(outcome(first)).toBe('done')
+    expect(outcome(first), JSON.stringify(first.report)).toBe('done')
     expect(f.site.uploads).toHaveLength(1)
     expect(f.site.uploads[0]).toContain('123,42.00')
     expect((await f.runner.start('auto-upload', { input })).report.counts).toEqual({ skipped: 1 })
@@ -252,6 +254,81 @@ describe('Chrome and real server effects', () => {
     const resumed = JSON.parse((await call('run_resume', { runId: paused.runId }))[0]?.text ?? '{}')
     expect(resumed).toMatchObject({ status: 'done', counts: { done: 1 } })
     expect(f.site.submissions).toHaveLength(1)
+  })
+
+  it('warns of an empty scope, resolves only a checked review item and runs the doctor over MCP', async () => {
+    const shop = await api()
+    const root = mkdtempSync(join(tmpdir(), 'ritoko-e2e-'))
+    cleanup.push(async () => {
+      await shop.close()
+      rmSync(root, { recursive: true, force: true })
+    })
+    const input = join(root, 'input.csv')
+    writeFileSync(input, 'Email\na@example.test\n')
+    const { client, call } = await mcp(root)
+    const workflow = {
+      name: 'unscoped-orders',
+      description: 'An order whose answer never comes',
+      params: { input: {} },
+      items: { from: '{{param.input}}', key: '{{item.Email}}' },
+      item: [
+        {
+          id: 'send',
+          do: 'http',
+          method: 'POST',
+          url: `${shop.url}/hang`,
+          commit: true,
+          timeoutMs: 300,
+          expect: { status: [201] },
+        },
+      ],
+    }
+    expect(JSON.parse((await call('workflow_save', { workflow }))[0]?.text ?? '{}').warnings).toContain(
+      UNSCOPED,
+    )
+    const run = JSON.parse(
+      (await call('run_start', { workflow: workflow.name, params: { input } }))[0]?.text ?? '{}',
+    )
+    expect(run).toMatchObject({ status: 'partial', counts: { review: 1 }, warnings: [UNSCOPED] })
+    const resolution = {
+      runId: run.runId,
+      key: 'a@example.test',
+      status: 'failed',
+      note: 'No order in the shop',
+    }
+    const refused = await client.callTool({ name: 'run_resolve', arguments: resolution })
+    expect(refused.isError).toBe(true)
+    expect(JSON.stringify(refused.content)).toContain(
+      'the run will submit this row again on resume, which creates a duplicate if the record already exists',
+    )
+    const resolved = JSON.parse(
+      (await call('run_resolve', { ...resolution, confirmChecked: true }))[0]?.text ?? '{}',
+    )
+    expect(resolved).toMatchObject({
+      manualResolutions: 1,
+      warnings: [UNSCOPED],
+      problems: [
+        {
+          status: 'failed',
+          message: 'Manually resolved (unverified): No order in the shop',
+          resolution: { by: 'manual', verified: false, note: 'No order in the shop' },
+        },
+      ],
+    })
+    expect(shop.count('POST', '/hang')).toBe(1)
+    const doctor = JSON.parse((await call('doctor', {}))[0]?.text ?? '{}')
+    expect(doctor.checks.map((c: { name: string }) => c.name)).toEqual([
+      'node',
+      'sqlite',
+      'home',
+      'journal',
+      'leases',
+      'playwright',
+      'browser',
+      'chrome',
+    ])
+    // The journal is open in the server: the doctor reads it beside it, and the e2e environment has Chrome.
+    expect(doctor.ok).toBe(true)
   })
 
   it('journals the recorded first row before replaying the full CSV', async () => {
@@ -587,6 +664,7 @@ describe('Chrome and real server effects', () => {
         'user3@example.test',
         'done',
         'Lab server contains the exact email and name',
+        { confirmChecked: true },
       )
       expect((await f.runner.resume(resumed.report.runId)).status).toBe('done')
     } finally {

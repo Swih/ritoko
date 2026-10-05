@@ -8,12 +8,13 @@ import { bounded, download } from './download.ts'
 import { extract } from './extract.ts'
 import { runHttp, runMcp, VerificationError } from './integrations.ts'
 import { readItems } from './items.ts'
-import type { Cause, ItemRow, Ledger, Run } from './ledger.ts'
-import { resolve, SelectorError } from './locate.ts'
+import type { Cause, ItemRow, Ledger, Resolution, Run } from './ledger.ts'
+import { describe, resolve, SelectorError } from './locate.ts'
+import { lookup } from './lookup.ts'
 import { McpClients } from './mcp-client.ts'
 import { paths } from './paths.ts'
-import { type Step, Target, Workflow } from './schema.ts'
-import { check, type Store, secretVariables } from './store.ts'
+import { type Selector, type Step, Target, Workflow } from './schema.ts'
+import { check, type Store, secretVariables, UNSCOPED } from './store.ts'
 import { mask, references, render, renderSelector, type Scope, snapshotVars } from './template.ts'
 
 export { VerificationError }
@@ -43,6 +44,9 @@ export async function confine(file: string, dir: string | undefined): Promise<st
   return actual
 }
 
+/** A step matched through a fallback selector: it may be looser than the primary. */
+export type Fallback = { stepId: string; index: number; selector: string; commit?: true }
+
 export type Report = {
   runId: string
   driver: 'host' | 'direct'
@@ -52,7 +56,15 @@ export type Report = {
   message: string | null
   durationMs: number
   counts: Partial<Record<ItemRow['status'], number>>
-  items: Pick<ItemRow, 'idx' | 'key' | 'status' | 'cause' | 'message' | 'evidence'>[]
+  items: (Pick<ItemRow, 'idx' | 'key' | 'status' | 'cause' | 'message' | 'evidence'> & {
+    resolution?: Resolution
+  })[]
+  /** Items whose status a person set (run_resolve): their word, which Ritoko did not verify. */
+  manualResolutions: number
+  /** First fallback match of each step in this run (direct runner only). */
+  fallbacks: Fallback[]
+  /** What can make this run skip or misdirect rows: shown with every result. */
+  warnings: string[]
   /** Downloaded and extracted files by saveAs name. */
   files: Record<string, string>
   dir: string
@@ -82,6 +94,8 @@ export class Runner {
   #live = new Map<string, { page: Page; document: number }>()
   /** Selector index that last worked, per run and step: skips known-broken primaries. */
   #preferred = new Map<string, number>()
+  /** Run and step pairs whose fallback match is journaled (the journal also knows after a restart). */
+  #fellBack = new Set<string>()
   /** The MCP servers of the operation in progress, closed when it ends. */
   #mcp: McpClients | undefined
   /** Setup credentials survive a live browser pause in memory only. */
@@ -209,6 +223,20 @@ export class Runner {
       check(wf)
       this.#direct(wf)
       if (!wf.items || wf.readOnly) throw new Error('Adoption is for a recorded write-batch item')
+      const after = wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)
+      if (
+        !wf.ensure &&
+        !after.some(
+          (step) =>
+            step.do === 'expect' ||
+            ((step.do === 'http' || step.do === 'mcp') &&
+              (Object.keys(step.expect?.json ?? {}).length > 0 ||
+                (step.do === 'http' && Boolean(step.expect?.status?.length)))),
+        )
+      )
+        throw new Error(
+          'Adoption needs an ensure lookup or verification after the commit; the skipped commit response cannot verify it',
+        )
       const resolved = this.#params(wf, params)
       const scope: Scope = { ...this.#scope(wf, resolved, {}), item: data }
       const key = render(wf.items.key, scope).trim()
@@ -223,9 +251,18 @@ export class Runner {
       this.ledger.updateRun(run.id, { phase: 'items' })
       this.ledger.updateItem(run.id, 0, { status: 'running', committed: true, attempts: 1 })
       this.ledger.event(run.id, 'adopt', { key, note })
-      const after = wf.item.slice(wf.item.findIndex((s) => s.commit) + 1)
       this.#mcp = new McpClients(wf.servers, scope)
       try {
+        if (wf.ensure) {
+          const result = await this.#lookup(run, wf, scope)
+          if (result.outcome !== 'present')
+            throw new VerificationError('The recorded submission is absent at the destination')
+          this.ledger.updateItem(run.id, 0, {
+            status: 'done',
+            resolution: { by: 'ensure', verified: true, note: 'Adopted through destination lookup' },
+          })
+          return this.#finish(run.id, 'done')
+        }
         const page = usesBrowser(after) ? await this.browser.page() : undefined
         for (const step of after) {
           this.ledger.updateItem(run.id, 0, { stepId: step.id })
@@ -268,6 +305,59 @@ export class Runner {
     return this.ledger.exclusive(async () => this.#execute(runId))
   }
 
+  /** Settle one uncertain item using only its frozen destination lookup; never runs setup or writes. */
+  reconcile(runId: string, key: string): Promise<Report> {
+    return this.ledger.exclusive(async () => {
+      const run = this.ledger.run(runId)
+      if (this.ledger.driver(runId) !== 'direct') throw new Error('Reconcile only supports direct runs')
+      if (!run.definition) throw new Error('Reconcile requires a frozen workflow snapshot')
+      const wf = Workflow.parse(run.definition)
+      check(wf)
+      this.#direct(wf)
+      if (!wf.ensure) throw new Error('This frozen workflow has no ensure lookup')
+      const item = this.ledger.items(runId).find((row) => row.key === key)
+      if (
+        !item ||
+        item.cause === 'duplicate' ||
+        !(
+          item.status === 'review' ||
+          (item.committed && ['running', 'paused', 'failed'].includes(item.status))
+        )
+      )
+        throw new Error('Reconcile requires an original review item or an interrupted committed item')
+      const scope = { ...this.#scope(wf, run.params, {}), item: item.data, key, committed: true }
+      this.#mcp = new McpClients(wf.servers, scope)
+      try {
+        const result = await this.#lookup(run, wf, scope)
+        if (item.status !== 'review')
+          this.ledger.updateItem(runId, item.idx, { status: 'review', cause: 'interrupted' })
+        this.ledger.resolve(
+          runId,
+          key,
+          result.outcome === 'present' ? 'done' : 'failed',
+          `Destination lookup verified ${result.outcome}`,
+          { by: 'reconcile', evidence: JSON.stringify(result.evidence) },
+        )
+        return this.report(runId)
+      } finally {
+        await this.#closeServers()
+      }
+    })
+  }
+
+  async #lookup(run: Run, wf: Workflow, scope: Scope) {
+    if (!wf.ensure) throw new Error('Missing ensure lookup')
+    const result = await lookup(wf.ensure, {
+      scope,
+      dir: this.#dir(run.id),
+      identity: '',
+      commit: () => {},
+      mcp: this.#mcp as McpClients,
+    })
+    this.ledger.event(run.id, 'lookup', { key: scope.key, ...result.evidence })
+    return result
+  }
+
   /** Stops a run for good: unsubmitted items fail as cancelled, freeing their keys; submitted ones go to review. */
   cancel(runId: string): Promise<Report> {
     return this.ledger.exclusive(async () => {
@@ -279,9 +369,16 @@ export class Runner {
     })
   }
 
-  resolve(runId: string, key: string, status: 'done' | 'failed', note: string): Promise<Report> {
+  /** A person's resolution: `confirmChecked` is their confirmation that they checked the destination. */
+  resolve(
+    runId: string,
+    key: string,
+    status: 'done' | 'failed',
+    note: string,
+    { confirmChecked = false } = {},
+  ): Promise<Report> {
     return this.ledger.exclusive(async () => {
-      this.ledger.resolve(runId, key, status, note)
+      this.ledger.resolve(runId, key, status, note, { by: 'manual', confirmChecked })
       return this.report(runId)
     })
   }
@@ -328,6 +425,13 @@ export class Runner {
     const items = this.ledger.items(runId)
     const counts: Report['counts'] = {}
     for (const i of items) counts[i.status] = (counts[i.status] ?? 0) + 1
+    const fallbacks = this.ledger.events(runId, 'fallback') as Fallback[]
+    const warnings = run.definition?.items && !run.scope ? [UNSCOPED] : []
+    for (const f of fallbacks)
+      if (f.commit)
+        warnings.push(
+          `Commit step "${f.stepId}" matched through fallback ${f.index}, ${f.selector}, instead of its primary selector: check that it is the intended submit control and look at a submitted record.`,
+        )
     return {
       runId,
       driver: this.ledger.driver(runId),
@@ -337,14 +441,18 @@ export class Runner {
       message: run.message,
       durationMs: run.activeMs,
       counts,
-      items: items.map(({ idx, key, status, cause, message, evidence }) => ({
+      items: items.map(({ idx, key, status, cause, message, evidence, resolution }) => ({
         idx,
         key,
         status,
         cause,
         message,
         evidence,
+        ...(resolution && { resolution }),
       })),
+      manualResolutions: items.filter((i) => i.resolution?.by === 'manual').length,
+      fallbacks,
+      warnings,
       files: run.files,
       dir: this.#dir(runId),
     }
@@ -566,6 +674,31 @@ export class Runner {
       scope.committed = committed
       scope.key = item.key
       update({ status: 'running', committed, attempts: item.attempts + 1, message: null, cause: null, vars })
+      if (wf.ensure && !committed) {
+        try {
+          const result = await this.#lookup(run, wf, scope)
+          if (result.outcome === 'present') {
+            update({
+              status: 'done',
+              cause: null,
+              message: 'Existing record verified at destination; nothing submitted',
+              resolution: { by: 'ensure', verified: true, note: 'Destination lookup verified present' },
+            })
+            failures = 0
+            continue
+          }
+        } catch (error) {
+          update({ status: 'failed', cause: 'verification', message: `ensure: ${(error as Error).message}` })
+          if (++failures >= MAX_CONSECUTIVE_FAILURES) {
+            this.ledger.updateRun(run.id, {
+              status: 'stopped',
+              message: `${failures} consecutive item failures`,
+            })
+            return undefined
+          }
+          continue
+        }
+      }
       for (let i = from; i < wf.item.length; i++) {
         const step = wf.item[i] as Step
         update({ step: i, stepId: step.id })
@@ -613,10 +746,11 @@ export class Runner {
           }
           const cause: Cause =
             error instanceof VerificationError || error instanceof SelectorError ? 'verification' : 'system'
+          const fallback = committed ? this.#commitFallback(run.id, wf) : undefined
           update({
             status: committed ? 'review' : 'failed',
             cause,
-            message: `${step.id}: ${(error as Error).message.split('\n')[0]}`,
+            message: `${step.id}: ${(error as Error).message.split('\n')[0]}${fallback ? ` — ${fallback}` : ''}`,
             evidence: await this.#shot(page, run.id, item, 'failed'),
           })
           if (++failures >= MAX_CONSECUTIVE_FAILURES) {
@@ -632,7 +766,7 @@ export class Runner {
           update({
             status: 'done',
             cause: null,
-            message: null,
+            message: (committed && this.#commitFallback(run.id, wf)) || null,
             evidence: await this.#shot(page, run.id, item, 'done'),
           })
           failures = 0
@@ -722,6 +856,7 @@ export class Runner {
         start: this.#preferred.get(cacheKey),
       })
       this.#preferred.set(cacheKey, index)
+      if (index > 0) this.#fallback(runId, step, step.target, index)
       return locator
     }
 
@@ -816,6 +951,30 @@ export class Runner {
     if (templated) scope.files[stepId] = file
     scope.files[templated ? basename(file) : saveAs] = file
     this.ledger.updateRun(runId, { files: scope.files })
+  }
+
+  /** Journals, once per run and step, a match through a fallback selector: it can be looser than the primary. */
+  #fallback(runId: string, step: Step, target: Target, index: number): void {
+    const key = `${runId}:${step.id}`
+    if (this.#fellBack.has(key)) return
+    if (!this.ledger.events(runId, 'fallback').some((f) => (f as Fallback).stepId === step.id))
+      this.ledger.event(runId, 'fallback', {
+        stepId: step.id,
+        index,
+        selector: describe(target.fallbacks[index - 1] as Selector),
+        ...(step.commit && { commit: true }),
+      })
+    this.#fellBack.add(key)
+  }
+
+  /** Note for an item whose commit step matched through a fallback (the match its commit last used). */
+  #commitFallback(runId: string, wf: Workflow): string | undefined {
+    const step = wf.item.find((s) => s.commit)
+    const index = step && this.#preferred.get(`${runId}:${step.id}`)
+    const selector = step && 'target' in step && index ? step.target?.fallbacks[index - 1] : undefined
+    return selector
+      ? `Submitted through fallback ${index} of commit step "${step?.id}", ${describe(selector)}, not its primary selector: check that it is the intended submit control.`
+      : undefined
   }
 
   async #expect(

@@ -1,7 +1,7 @@
 {
   "name": "ritoko",
-  "version": "0.1.1",
-  "description": "Record browser procedures, replay new data, verify results and hold uncertain submissions for review.",
+  "version": "0.2.0",
+  "description": "Resumable browser, API and MCP workflows for AI agents. Verify CSV/Excel batches and review uncertain writes.",
   "author": {
     "name": "Swih",
     "url": "https://github.com/Swih"
@@ -15,7 +15,11 @@
     "rpa",
     "workflow",
     "playwright",
-    "replay"
+    "replay",
+    "mcp",
+    "csv",
+    "excel",
+    "ai-agents"
   ],
   "mcpServers": {
     "ritoko": {

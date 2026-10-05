@@ -1,0 +1,1038 @@
+{
+  "about": {
+    "purpose": "Verified fact base about alternatives to Ritoko, used to write fair comparison pages. Human summary: competitors.md.",
+    "retrieved": "2026-10-05",
+    "siteContentReview": {
+      "retrieved": "2026-10-05",
+      "note": "Client-date review for the new comparison pages. The original 2026-10-05 research snapshot and its blocked-host provenance are retained; those failures do not describe the later web-tool access below.",
+      "findings": [
+        "Stagehand v4 server caching still requires Browserbase; v3 documentation separately describes filesystem cacheDir replay on LOCAL and BROWSERBASE. Claims about local caching must name the version and path.",
+        "taprun live homepage says MIT-licensed, while public packages README calls the consuming CLI proprietary and closed-source. Licence uncertainty remains; the public index confirms mark resolution for intent_uncertain runs.",
+        "browser-use agent source confirms saved-history replay with variable substitution; AI extract steps and final summary can use a model. No blanket always-inference claim is used.",
+        "New pages avoid exact prices, release cadence, star counts and comparative reliability claims. They distinguish scope of documentation evidence from proof that a feature is absent."
+      ],
+      "sources": [
+        "https://github.com/microsoft/playwright-mcp",
+        "https://playwright.dev/docs/codegen",
+        "https://github.com/browser-use/browser-use",
+        "https://raw.githubusercontent.com/browser-use/browser-use/main/browser_use/agent/service.py",
+        "https://docs.stagehand.dev/v3/basics/observe",
+        "https://docs.stagehand.dev/v3/best-practices/caching",
+        "https://docs.stagehand.dev/v4/best-practices/caching",
+        "https://github.com/Skyvern-AI/skyvern",
+        "https://raw.githubusercontent.com/Skyvern-AI/skyvern/main/docs/developers/features/code-caching.mdx",
+        "https://raw.githubusercontent.com/Skyvern-AI/skyvern/main/docs/cloud/building-agents/configure-blocks.mdx",
+        "https://raw.githubusercontent.com/LeonTing1010/tap/main/README.md",
+        "https://raw.githubusercontent.com/LeonTing1010/tap/main/packages/README.md",
+        "https://taprun.dev/llms.txt",
+        "https://taprun.dev/"
+      ]
+    },
+    "rules": [
+      "Competitor facts come only from that vendor's own docs, pricing page, README, LICENSE, release page or package registry entry, opened on the retrieval date. Search-engine summaries and third-party blogs are not used as sources.",
+      "Ritoko facts cite this repository's code (file:line at commit 1daf6eb).",
+      "A field can be verified and still say 'not documented': it means we read the listed pages and did not find it."
+    ],
+    "statusValues": {
+      "verified": "Read in a primary source on the retrieval date.",
+      "partial": "Part of the field is verified; 'why' says what could not be checked.",
+      "unverified": "Could not be checked in a primary source; 'why' gives the reason. Do not use in copy."
+    },
+    "method": [
+      "WebFetch was used for GitHub repository pages (star counts, sidebars, commit and release lists). Most vendor documentation hosts were refused by the egress proxy (see 'unreachable').",
+      "Where a vendor builds its documentation site from its own GitHub repository (Stagehand packages/docs, Skyvern docs, Playwright docs/src, taprun docs with CNAME taprun.dev), the source files were downloaded from raw.githubusercontent.com and quoted. They can differ from the deployed site.",
+      "Anthropic pages (support.claude.com, claude.com, code.claude.com) were downloaded directly as text.",
+      "Release dates and cadence come from the npm registry JSON (time field) and the PyPI JSON API. 'Stable versions in 365 days' counts versions without a prerelease tag published between 2025-10-05 and 2026-10-05; parallel release lines are included."
+    ],
+    "fieldCounts": {
+      "fields": "category, positioning, localOrCloud, license, pricing, replayModel, selfHeal, batchInput, journalResume, duplicateProtection, auditReport, distribution, maturity, strengthsVsRitoko (14 per tool)",
+      "claude-in-chrome": { "verified": 12, "partial": 2, "unverified": 0 },
+      "playwright-mcp": { "verified": 14, "partial": 0, "unverified": 0 },
+      "playwright-codegen": { "verified": 14, "partial": 0, "unverified": 0 },
+      "browser-use": { "verified": 12, "partial": 2, "unverified": 0 },
+      "workflow-use": { "verified": 13, "partial": 1, "unverified": 0 },
+      "stagehand": { "verified": 13, "partial": 1, "unverified": 0 },
+      "skyvern": { "verified": 13, "partial": 1, "unverified": 0 },
+      "taprun": { "verified": 12, "partial": 1, "unverified": 1 },
+      "chatgpt-agent": { "verified": 0, "partial": 0, "unverified": 14 },
+      "n8n": { "verified": 7, "partial": 2, "unverified": 5 },
+      "anchor-browser": { "verified": 3, "partial": 5, "unverified": 6 },
+      "zapier": { "verified": 0, "partial": 0, "unverified": 14 }
+    },
+    "unreachable": [
+      { "host": "openai.com, help.openai.com, chatgpt.com, platform.openai.com, developers.openai.com, cdn.openai.com", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "ChatGPT agent / Operator: every field unverified." },
+      { "host": "taprun.dev, dev.to", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "taprun site read from its source in github.com/LeonTing1010/tap/tree/main/docs instead; deployed pages not verified." },
+      { "host": "github.com/LeonTing1010/tap-core", "error": "HTTP 404 on 2026-10-05 (private or absent)", "effect": "taprun engine source not readable." },
+      { "host": "docs.stagehand.dev, www.browserbase.com, docs.browserbase.com", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "Stagehand docs read from packages/docs in its repo; Browserbase prices unverified." },
+      { "host": "browser-use.com, docs.browser-use.com", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "browser-use cloud prices only from repository files (which conflict)." },
+      { "host": "www.skyvern.com", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "Skyvern pricing page not opened; plan table taken from docs/developers/optimization/cost-control.mdx in its repo." },
+      { "host": "playwright.dev", "error": "EGRESS_BLOCKED (WebFetch and curl) on 2026-10-05", "effect": "Playwright docs read from docs/src in microsoft/playwright." },
+      { "host": "chromewebstore.google.com", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "Claude in Chrome version and user count unverified." },
+      { "host": "anchorbrowser.io, zapier.com, n8n.io, docs.n8n.io", "error": "EGRESS_BLOCKED (WebFetch) on 2026-10-05", "effect": "Optional records mostly unverified." },
+      { "host": "api.github.com", "error": "proxy refused: repository access not enabled for this session", "effect": "Star counts taken from github.com pages through WebFetch instead." }
+    ]
+  },
+  "ritoko": {
+    "name": "Ritoko",
+    "checkedAgainst": "src/ at commit 1daf6eb, package.json, plugin manifests; unit tests: 142 passed with `pnpm test` on 2026-10-05",
+    "category": {
+      "status": "verified",
+      "value": "Local MCP server, Claude Code / Codex plugin and CLI. An agent records or writes a browser, HTTP or MCP task once; Ritoko saves it as a JSON workflow and replays it on CSV/XLSX rows.",
+      "evidence": ["package.json (description, bin, files)", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "src/commands.ts:10-24"]
+    },
+    "positioning": {
+      "status": "verified",
+      "quote": "Turn a browser task your agent solved once into a reliable, resumable procedure.",
+      "words": 13,
+      "url": "package.json (description)"
+    },
+    "localOrCloud": {
+      "status": "verified",
+      "value": "Local only. Node >= 24; workflows, journal and run files under ~/.ritoko (RITOKO_HOME overrides); the direct runner drives local Chrome through playwright-core. No hosted service in the code.",
+      "evidence": ["package.json (engines)", "src/engine/paths.ts:4-10", "src/engine/browser.ts"]
+    },
+    "license": { "status": "verified", "value": "MIT", "evidence": ["LICENSE", "package.json (license)"] },
+    "pricing": {
+      "status": "verified",
+      "value": "No paid tier in the repository. Recording, repair and host mode use the client agent's own subscription or API key.",
+      "evidence": ["README.md FAQ 'Do I need a separate LLM API key?'"]
+    },
+    "replayModel": {
+      "status": "verified",
+      "value": "The direct runner executes saved steps with Playwright, Node fetch and an MCP client, and contains no LLM client. Runtime dependencies are only @modelcontextprotocol/sdk, playwright-core, read-excel-file and zod. Its MCP client declares no capabilities, so a connected server cannot request sampling through it, and src/ contains no createMessage or sampling call (grep on 2026-10-05). Limits: host mode hands each batch to the agent's own browser or connected tools, so the agent's model runs; an mcp step calls a tool that may itself use a model; recording and repair are done by the agent.",
+      "evidence": ["src/engine/runner.ts:76-79", "package.json (dependencies)", "src/engine/mcp-client.ts:150", "src/engine/host.ts:25-34", "src/engine/integrations.ts:294-305"]
+    },
+    "selfHeal": {
+      "status": "verified",
+      "value": "No automatic heal. A target that no longer matches pauses the run as needs_repair and returns an accessibility snapshot; the agent replaces the target with step_repair and resumes. Replacing the commit step's target requires confirmCommitTarget: true. The repair becomes a new workflow version only when the workflow is otherwise unchanged. After the commit, a missing target pauses only on the run's first submitted item; elsewhere the item goes to review.",
+      "evidence": ["src/engine/runner.ts:589-612", "src/engine/runner.ts:870-899", "src/engine/runner.ts:289-312", "src/mcp/server.ts:724-775"]
+    },
+    "batchInput": {
+      "status": "verified",
+      "value": ".csv (comma or semicolon; UTF-8 or Windows-1252) and .xlsx (sheet selectable). Required columns are checked before any browser action; duplicate business keys in one input are refused.",
+      "evidence": ["src/engine/items.ts:8-13", "src/engine/items.ts:43-85", "src/engine/runner.ts:447-462", "src/engine/ledger.ts:344-349"]
+    },
+    "journalResume": {
+      "status": "verified",
+      "value": "SQLite journal (node:sqlite, WAL, synchronous FULL) with runs, items and events tables in ~/.ritoko/ritoko.db; a run stores its workflow snapshot and rows. run_resume / `ritoko resume` keeps done items, retries failed ones, and turns items interrupted after the commit into review. An execution lease with heartbeat fences a second process. Host runs resume with host_next.",
+      "evidence": ["src/engine/ledger.ts:124-156", "src/engine/ledger.ts:213-246", "src/engine/runner.ts:353-376", "src/engine/runner.ts:514-521", "test/e2e.test.ts:543 'survives killing the CLI after server acceptance: ten unique sends and one review'"]
+    },
+    "duplicateProtection": {
+      "status": "verified",
+      "value": "Business key per row plus optional scope. A key already done for the same workflow and scope is skipped; a key whose outcome is uncertain in another run is held for review; a done key with different data fails. A write workflow must have exactly one commit step and an expect after it. A failure after the commit becomes review, not a resubmission. click and check run an actionability trial before the commit is journaled. HTTP retries only GET/HEAD before the commit; an http step can send an Idempotency-Key stable per workflow, scope, key and step. run_adopt journals the row submitted during the demonstration. repeat: true re-runs done rows on explicit request (uncertain rows stay blocked). Limits: covers this installation's journal only, and depends on a correct key, scope, commit and expect.",
+      "evidence": ["src/engine/ledger.ts:409-437", "src/engine/runner.ts:523-545", "src/engine/store.ts:150-169", "src/engine/runner.ts:614-621", "src/engine/runner.ts:736-743", "src/engine/http.ts:6-7", "src/engine/integrations.ts:184-195", "src/engine/runner.ts:199-260", "README.md FAQ 'Does Ritoko guarantee no duplicate writes?'"]
+    },
+    "auditReport": {
+      "status": "verified",
+      "value": "run_report / `ritoko report` return JSON: run status, duration, counts and per-item status, cause, message and evidence screenshot. Screenshots item-N-done|failed|paused.png and final.png are written to ~/.ritoko/runs/<runId>. The events table records adopt, resolve, cancel, repair and http/mcp evidence without bodies or secrets. There is no HTML or CSV report.",
+      "evidence": ["src/engine/runner.ts:46-59", "src/engine/runner.ts:326-351", "src/engine/runner.ts:911-918", "src/engine/ledger.ts:439-444", "src/engine/runner.ts:671-692", "src/mcp/server.ts:619-645"]
+    },
+    "distribution": {
+      "status": "verified",
+      "value": "stdio MCP server (`ritoko mcp`), Claude Code plugin, Codex plugin, CLI (list, import, run, resume, report, resolve, cancel, browser-close, host start/next), npm package `ritoko`, agent skill in skills/ritoko. No scheduler (setInterval is used only for the lease heartbeat and MCP progress notifications).",
+      "evidence": [".claude-plugin/plugin.json", ".codex-plugin/plugin.json", "src/commands.ts:10-24", "src/engine/ledger.ts:235", "src/mcp/server.ts:197"]
+    },
+    "maturity": {
+      "status": "verified",
+      "value": "npm ritoko 0.1.1 published 2026-10-03T22:04:59Z; first version 0.1.0 published 2026-10-03. github.com/Swih/ritoko showed 0 stars and 0 forks on 2026-10-05.",
+      "evidence": ["https://registry.npmjs.org/ritoko", "https://github.com/Swih/ritoko"]
+    }
+  },
+  "tools": [
+    {
+      "id": "claude-in-chrome",
+      "name": "Claude in Chrome",
+      "vendor": "Anthropic",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "Chrome extension that lets Claude act in the user's browser; also driven from Claude Desktop / Cowork and Claude Code.",
+        "evidence": ["https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Claude in Chrome is a browser extension that allows Claude to read, click, and navigate websites alongside you.",
+        "words": 18,
+        "url": "https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Acts in the user's own Chrome; model traffic goes to Anthropic. 'Claude in Chrome sends its chat traffic through your existing Claude endpoints (claude.ai, api.anthropic.com, platform.claude.com)'. Cowork side-panel sessions: 'Sessions live with your Claude account rather than with the machine you started on.'",
+        "evidence": ["https://support.claude.com/en/articles/13065128-claude-in-chrome-admin-controls", "https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome"]
+      },
+      "license": {
+        "status": "partial",
+        "value": "No open-source licence found; offered as a feature of paid Claude plans under Anthropic's terms (linked from the support pages).",
+        "why": "The extension's own licence text was not found on the pages read; the Chrome Web Store listing was blocked."
+      },
+      "pricing": {
+        "status": "verified",
+        "value": "Included in paid plans, not in Free. claude.com/pricing, USD, retrieved 2026-10-05: Free $0 (Claude in Chrome: No); Pro $17/month with annual billing ($200 billed up front) or $20 billed monthly; Max 'From $100 Per month' (5x or 20x Pro usage); Team standard seat $20/seat/month annual or $25 monthly, premium seat $100 annual or $125 monthly; Enterprise 'US$20/seat/month, billed annually. Usage cost scales with model and task.' Usage: 'using Claude in Chrome will count against the same plan limits that apply to Claude or Claude Code.'",
+        "evidence": ["https://claude.com/pricing", "https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "Model-free replay is not documented. Recording: 'you can teach Claude a workflow by recording the steps yourself, and Claude learns to repeat them', then 'Save the workflow as a shortcut'. Shortcuts are saved prompts: 'Save your best-working prompts as shortcuts'. Each action is chosen from screenshots: 'To see a page and decide what to do next, Claude takes screenshots of the tabs it's working in.' Recording is classic side panel only: 'Recording isn't available when the side panel runs as a Cowork session.'",
+        "evidence": ["https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome", "https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "No separate heal feature; the model decides each step at run time from screenshots, so page changes are handled by inference, which counts against plan usage ('Browser interactions are more compute-intensive than regular chats with Claude').",
+        "evidence": ["https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely", "https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting"]
+      },
+      "batchInput": {
+        "status": "verified",
+        "value": "Only as a prompt: the Claude Code docs show 'I have a spreadsheet of customer contacts in contacts.csv. For each row, go to the CRM ...' and 'Claude reads your local file, navigates the web interface, and enters the data for each record.' No structured batch or queue feature found.",
+        "evidence": ["https://code.claude.com/docs/en/chrome"]
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "Session history only: 'Every side panel session appears in your history like any other Cowork session.' Background work continues 'as long as Chrome is open'. Per-row state and crash resume: not documented.",
+        "evidence": ["https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome"]
+      },
+      "duplicateProtection": {
+        "status": "verified",
+        "value": "Approval-based, not idempotency-based. Modes Manually approve / Automatically approve / Skip all approvals; downloads, sensitive input and authorizations always ask; prohibited regardless of mode include 'Making purchases or financial transactions', 'Creating accounts' and 'Permanent deletions'. Handling of a write whose outcome is unknown: not documented.",
+        "evidence": ["https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide"]
+      },
+      "auditReport": {
+        "status": "verified",
+        "value": "Conversation/session history; 'See your permission history' in extension settings; from Claude Code: GIF recordings of browser interactions and screenshots saved to disk; console log reading. Per-run report: not documented.",
+        "evidence": ["https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide", "https://code.claude.com/docs/en/chrome"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "Chrome extension ('not supported on other Chromium-based web browsers or mobile devices' for the side panel); Claude Desktop connector and Cowork; Claude Code via `claude --chrome` or /chrome (Chrome, Edge and other Chromium browsers; not WSL), exposed as the claude-in-chrome MCP server; VS Code extension. Requires a direct Anthropic plan; not available through Bedrock, Google Cloud or Microsoft Foundry.",
+        "evidence": ["https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome", "https://code.claude.com/docs/en/chrome"]
+      },
+      "maturity": {
+        "status": "partial",
+        "value": "Release notes: experimental extension on August 26, 2025; '/slash commands' shortcuts on September 16, 2025; scheduled tasks on November 24, 2025 (Max beta); 'Record a workflow' on December 18, 2025 (beta, all paid plans). Product page on 2026-10-05: 'Claude in Chrome is now generally available'; the getting-started article (dated August 26, 2026) still says 'in beta in the Chrome side panel'. Claude Code requires extension version 1.0.36 or later.",
+        "why": "Extension version, user count and update date not verified: Chrome Web Store blocked.",
+        "evidence": ["https://support.claude.com/en/articles/12138966-release-notes", "https://claude.com/claude-in-chrome", "https://code.claude.com/docs/en/chrome"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Nothing to author: record by demonstration in the side panel or describe the task in words; usable by non-developers.",
+          "Built-in scheduling ('daily, weekly, monthly, or annually') with notifications; Ritoko has no scheduler.",
+          "Adapts to page changes at run time through the model; Ritoko pauses for a repair.",
+          "Documented prompt-injection classifiers, permission modes, admin allowlists/blocklists, and 1Password sign-in so 'Claude never sees your password or one-time code'.",
+          "Sessions follow the account across web, desktop and mobile; built into Claude Code for build-test-verify."
+        ]
+      },
+      "notDocumented": [
+        "Model-free replay of a recorded workflow or shortcut: not found in https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome on 2026-10-05",
+        "Per-row journal, business key or crash resume for a batch: not found in https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome or https://code.claude.com/docs/en/chrome on 2026-10-05",
+        "Handling of a write whose outcome is unknown (idempotency, hold for review): not found in https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide or https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely on 2026-10-05",
+        "A per-run report or export: not found in the five Claude in Chrome support articles on 2026-10-05",
+        "Whether scheduled tasks run while Chrome is closed: not found; background workflows are documented 'as long as Chrome is open' (https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome, 2026-10-05)"
+      ],
+      "sources": [
+        { "url": "https://support.claude.com/en/articles/12012173-get-started-with-claude-in-chrome", "retrieved": "2026-10-05", "what": "Plans, recording, shortcuts, scheduling, permissions list (article dated August 26, 2026)", "via": "HTTP GET (page text)" },
+        { "url": "https://support.claude.com/en/articles/12902428-use-claude-in-chrome-safely", "retrieved": "2026-10-05", "what": "Risks, screenshots, blocked sites, prohibited actions (dated August 12, 2026)", "via": "HTTP GET (page text)" },
+        { "url": "https://support.claude.com/en/articles/12902446-claude-in-chrome-permissions-guide", "retrieved": "2026-10-05", "what": "Permission modes, protected and prohibited actions, usage note for auto mode", "via": "HTTP GET (page text)" },
+        { "url": "https://support.claude.com/en/articles/12902405-claude-in-chrome-troubleshooting", "retrieved": "2026-10-05", "what": "Usage limits, blocked categories", "via": "HTTP GET (page text)" },
+        { "url": "https://support.claude.com/en/articles/13065128-claude-in-chrome-admin-controls", "retrieved": "2026-10-05", "what": "Network endpoints, admin controls", "via": "HTTP GET (page text)" },
+        { "url": "https://claude.com/claude-in-chrome", "retrieved": "2026-10-05", "what": "Product page (claude.com/chrome redirects here): GA announcement, 'Reach the web that has no API'", "via": "HTTP GET (page text)" },
+        { "url": "https://code.claude.com/docs/en/chrome", "retrieved": "2026-10-05", "what": "Claude Code integration, CSV prompt example, prerequisites", "via": "HTTP GET (page text)" },
+        { "url": "https://claude.com/pricing", "retrieved": "2026-10-05", "what": "Plan prices and which plans include Claude in Chrome", "via": "HTTP GET (page text)" },
+        { "url": "https://support.claude.com/en/articles/12138966-release-notes", "retrieved": "2026-10-05", "what": "Feature launch dates", "via": "HTTP GET (page text)" },
+        { "url": "https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "playwright-mcp",
+      "name": "Playwright MCP",
+      "vendor": "Microsoft",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "MCP server that exposes Playwright browser tools to an LLM client; Microsoft also ships Playwright CLI with skills for coding agents.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md", "https://github.com/microsoft/playwright-cli/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "This server enables LLMs to interact with web pages through structured accessibility snapshots, bypassing the need for screenshots or visually-tuned models.",
+        "words": 21,
+        "url": "https://github.com/microsoft/playwright-mcp/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Local process (`npx @playwright/mcp@latest`, stdio) or HTTP server (--port, --host); can attach to a running Chrome/Edge through the Playwright extension (--extension) or a CDP endpoint; persistent or isolated profiles.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "license": { "status": "verified", "value": "Apache-2.0 (LICENSE file; npm license field)", "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/LICENSE", "https://registry.npmjs.org/@playwright/mcp"] },
+      "pricing": {
+        "status": "verified",
+        "value": "Not published: free open-source package; model usage is billed by the MCP client's provider.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "No saved-procedure replay documented: the LLM client calls each tool. browser_start_recording records 'actions that the user performs in the browser as Playwright code' and browser_stop_recording returns them as Playwright code (--codegen typescript, python, java or csharp). browser_run_code_unsafe runs a Playwright snippet or file when the model calls it. Running exported code outside MCP is plain Playwright, not an MCP feature.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "No heal feature in the server. The README says MCP fits loops 'such as exploratory automation, self-healing tests, or long-running autonomous workflows' where the agent does the reasoning.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "batchInput": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"] },
+      "journalResume": {
+        "status": "verified",
+        "value": "Not documented. browser_resume is a debugger command ('Resume script execution after it was paused'), not crash resume. A persistent profile or --storage-state keeps login state between sessions.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "duplicateProtection": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"] },
+      "auditReport": {
+        "status": "verified",
+        "value": "browser_start_tracing / browser_stop_tracing, browser_start_video, --save-session ('save the Playwright MCP session into the output directory'), console messages, --output-dir for files.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "MCP server on npm (@playwright/mcp) with install snippets for Claude Code, Codex, VS Code, Cursor and others; Docker; browser extension mode. Separate @playwright/cli: 'playwright-cli install --skills' for Claude Code, GitHub Copilot and others, with recording-start/recording-stop and run-code.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp/blob/main/README.md", "https://github.com/microsoft/playwright-cli/blob/main/README.md"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 37.8k stars, 3.2k forks (2026-10-05). npm @playwright/mcp latest 0.0.83 published 2026-09-28; 40 stable versions in the 365 days to 2026-10-05, 6 in the last 90; first npm version 2025-03-13. @playwright/cli 0.1.22 published 2026-09-28.",
+        "evidence": ["https://github.com/microsoft/playwright-mcp", "https://registry.npmjs.org/@playwright/mcp", "https://registry.npmjs.org/@playwright/cli"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Microsoft-maintained and widely adopted (37.8k stars), with install paths for many MCP clients.",
+          "Chrome, Firefox, WebKit and Edge; device emulation; HTTP transport for shared or remote use.",
+          "Recording to Playwright code in four languages; test assertions (--caps=testing); tracing and video.",
+          "--secrets replaces matching secret values in tool responses (the README calls it 'a convenience and not a security feature').",
+          "Frequent releases (40 in a year)."
+        ]
+      },
+      "notDocumented": [
+        "Spreadsheet or queue batch input: not found in https://github.com/microsoft/playwright-mcp/blob/main/README.md on 2026-10-05",
+        "Per-row journal or crash resume: not found in https://github.com/microsoft/playwright-mcp/blob/main/README.md on 2026-10-05",
+        "Idempotency or handling of an uncertain write: not found in https://github.com/microsoft/playwright-mcp/blob/main/README.md on 2026-10-05",
+        "Storing and replaying a recorded procedure without the model: not found in https://github.com/microsoft/playwright-mcp/blob/main/README.md on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/microsoft/playwright-mcp", "retrieved": "2026-10-05", "what": "Stars, forks, licence badge", "via": "WebFetch" },
+        { "url": "https://github.com/microsoft/playwright-mcp/blob/main/README.md", "retrieved": "2026-10-05", "what": "Features, tools, options", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright-mcp/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "Apache License 2.0", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright-cli/blob/main/README.md", "retrieved": "2026-10-05", "what": "CLI + skills, recording commands", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://registry.npmjs.org/@playwright/mcp", "retrieved": "2026-10-05", "what": "Versions and publish dates", "via": "npm registry JSON" },
+        { "url": "https://registry.npmjs.org/@playwright/cli", "retrieved": "2026-10-05", "what": "Versions and publish dates", "via": "npm registry JSON" }
+      ]
+    },
+    {
+      "id": "playwright-codegen",
+      "name": "Playwright codegen (test generator) and Playwright Test agents",
+      "vendor": "Microsoft",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "Recorder in Playwright (CLI `npx playwright codegen`, VS Code extension, Inspector) that turns browser actions into test code; Playwright Test also ships planner, generator and healer agents for AI tools.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md", "https://github.com/microsoft/playwright/blob/main/docs/src/test-agents-js.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Playwright comes with the ability to generate tests for you as you perform actions in the browser",
+        "words": 17,
+        "url": "https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md"
+      },
+      "localOrCloud": { "status": "verified", "value": "Local (Node library and CLI).", "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md"] },
+      "license": { "status": "verified", "value": "Apache-2.0", "evidence": ["https://github.com/microsoft/playwright/blob/main/LICENSE", "https://registry.npmjs.org/playwright"] },
+      "pricing": { "status": "verified", "value": "Not published: free open-source package.", "evidence": ["https://github.com/microsoft/playwright/blob/main/LICENSE"] },
+      "replayModel": {
+        "status": "verified",
+        "value": "Yes, as code: codegen writes a test file that Playwright Test replays; the docs describe no model in this path. Locators are chosen 'prioritizing role, text and test id locators'.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "Playwright Test agents: 'healer executes the test suite and automatically repairs failing tests' (decorative emoji dropped); it 'Suggests a patch (e.g., locator update, wait adjustment, data fix)' and 'Re-runs the test until it passes or until guardrails stop the loop'. Agents run in your AI tool (`npx playwright init-agents --loop=vscode|claude|codex|opencode`), so model costs are that tool's.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/test-agents-js.md"]
+      },
+      "batchInput": {
+        "status": "verified",
+        "value": "Test-data pattern only: 'Create tests via a CSV file' with csv-parse, one test per row.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/test-parameterize-js.md"]
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "No business-row journal. 'Test retries are a way to automatically re-run a test when it fails.' Guidance on retries for tests that submit real data: not found.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/test-retries-js.md"]
+      },
+      "duplicateProtection": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/test-retries-js.md"] },
+      "auditReport": {
+        "status": "verified",
+        "value": "Built-in reporters; 'HTML reporter produces a self-contained folder that contains report for the test run that can be served as a web page.'",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/test-reporters-js.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "npm `playwright` / `@playwright/test`; CLI `npx playwright codegen`; VS Code extension ('Record new', 'Pick locator'); agent definitions for VS Code, Claude, Codex and opencode.",
+        "evidence": ["https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md", "https://github.com/microsoft/playwright/blob/main/docs/src/test-agents-js.md"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 97.1k stars, 6.5k forks (2026-10-05). npm playwright 1.63.0 published 2026-09-04; 14 stable versions in the 365 days to 2026-10-05, 3 in the last 90.",
+        "evidence": ["https://github.com/microsoft/playwright", "https://registry.npmjs.org/playwright"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Mature, multi-browser, multi-language tooling with a large CI and reporting ecosystem.",
+          "Codegen also records assertions (visibility, text, value).",
+          "An LLM healer agent for failing tests, run in the user's own AI tool.",
+          "HTML reports, traces and retries out of the box."
+        ]
+      },
+      "notDocumented": [
+        "Per-row journal, business key or crash resume for business data: not found in https://github.com/microsoft/playwright/blob/main/docs/src/test-retries-js.md or test-parameterize-js.md on 2026-10-05",
+        "Idempotency or handling of an uncertain write during retries: not found in https://github.com/microsoft/playwright/blob/main/docs/src/test-retries-js.md on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/microsoft/playwright", "retrieved": "2026-10-05", "what": "Stars, forks, licence", "via": "WebFetch" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/docs/src/codegen.md", "retrieved": "2026-10-05", "what": "Source of playwright.dev/docs/codegen (blocked)", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/docs/src/test-agents-js.md", "retrieved": "2026-10-05", "what": "Planner, generator, healer agents", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/docs/src/test-parameterize-js.md", "retrieved": "2026-10-05", "what": "CSV-driven tests", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/docs/src/test-retries-js.md", "retrieved": "2026-10-05", "what": "Retries", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/docs/src/test-reporters-js.md", "retrieved": "2026-10-05", "what": "Reporters", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/microsoft/playwright/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "Apache License 2.0", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://registry.npmjs.org/playwright", "retrieved": "2026-10-05", "what": "Versions and publish dates", "via": "npm registry JSON" },
+        { "url": "https://playwright.dev/docs/codegen", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "browser-use",
+      "name": "browser-use (open-source library)",
+      "vendor": "Browser Use",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "LLM browser agent: Python library, CLI with an agent skill, MCP server, and a hosted cloud (agent API and cloud browsers).",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/README.md", "https://github.com/browser-use/browser-use/blob/main/server.json"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Browser Use is the open-source browser agent (Python and TypeScript)",
+        "words": 10,
+        "url": "https://github.com/browser-use/browser-use/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Both: the library and CLI run locally with your model and a local or cloud browser; the hosted API runs agent and browser. 'You can also host the Python library and browsers on your own infrastructure.'",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/README.md"]
+      },
+      "license": { "status": "verified", "value": "MIT (LICENSE; PyPI classifier 'License :: OSI Approved :: MIT License')", "evidence": ["https://github.com/browser-use/browser-use/blob/main/LICENSE", "https://pypi.org/pypi/browser-use/json"] },
+      "pricing": {
+        "status": "partial",
+        "value": "Library free. The README says 'a $0.02 per browser-hour cloud browser' and 'New Google, GitHub, or Microsoft signups get $15 cloud credit'; CLOUD.md in the same repository says 'Browser sessions are charged at $0.05 per hour'. Model inference is billed by the provider or by ChatBrowserUse.",
+        "why": "The two repository statements conflict and the pricing page (browser-use.com) was blocked.",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/README.md", "https://github.com/browser-use/browser-use/blob/main/CLOUD.md"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "The agent calls the LLM at every step. Agent.rerun_history / load_and_rerun(history_file, variables) replay a saved AgentHistory with retries (max_retries default 3); per the docstrings an LLM is still used for 'AI steps (extract actions)' and for 'generating the final summary'. (Source code docstrings; the docs site was blocked.)",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "Not named as a feature. A live run re-plans with the LLM every step; rerun_history retries a failed action and can skip failures (skip_failures); re-inferring a broken saved step is not described in the docstrings read.",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py"]
+      },
+      "batchInput": {
+        "status": "partial",
+        "value": "Not found in the README.",
+        "why": "The documentation site (docs.browser-use.com) was blocked, so a documented batch feature could not be ruled out."
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "In-process only: pause() 'Pause the agent before the next step' and resume(); save_history() writes AgentHistory.json. Crash resume or per-row state: not found.",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py"]
+      },
+      "duplicateProtection": {
+        "status": "verified",
+        "value": "Not found; rerun_history retries actions up to max_retries without an idempotency mechanism described.",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py"]
+      },
+      "auditReport": {
+        "status": "verified",
+        "value": "AgentHistory file, generate_gif, save_conversation_path, and an LLM judge of the trace (use_judge defaults to True). Cloud: live session viewing and recordings (README, CLOUD.md).",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py", "https://github.com/browser-use/browser-use/blob/main/README.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "PyPI library; CLI with `browser-use skill install` for Claude Code, Codex and other agents; MCP server (`uvx browser-use --cli-mcp` in server.json); hosted API; Anthropic SDK integration.",
+        "evidence": ["https://github.com/browser-use/browser-use/blob/main/README.md", "https://github.com/browser-use/browser-use/blob/main/server.json"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 117k stars, 12.9k forks (2026-10-05). PyPI browser-use 0.13.10 uploaded 2026-09-04; 46 stable versions in the 365 days to 2026-10-05, 7 in the last 90; first PyPI release 0.1.0 on 2024-11-06.",
+        "evidence": ["https://github.com/browser-use/browser-use", "https://pypi.org/pypi/browser-use/json"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Handles sites never seen before through an LLM agent; Ritoko needs a recorded or written procedure first.",
+          "Very large community (117k stars) and frequent releases.",
+          "Cloud browsers with stealth, CAPTCHA solving and residential proxies (README).",
+          "Replay of a saved history with new variables, plus an LLM judge of the result.",
+          "Choice of models, including local models through Ollama."
+        ]
+      },
+      "notDocumented": [
+        "Idempotency or handling of an uncertain write: not found in https://github.com/browser-use/browser-use/blob/main/README.md or browser_use/agent/service.py on 2026-10-05",
+        "Per-row journal or crash resume: not found in https://github.com/browser-use/browser-use/blob/main/README.md or browser_use/agent/service.py on 2026-10-05",
+        "Spreadsheet batch input: not found in https://github.com/browser-use/browser-use/blob/main/README.md on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/browser-use/browser-use", "retrieved": "2026-10-05", "what": "Stars, forks, licence", "via": "WebFetch" },
+        { "url": "https://github.com/browser-use/browser-use/blob/main/README.md", "retrieved": "2026-10-05", "what": "Positioning, paths, cloud price line", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browser-use/browser-use/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "MIT", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browser-use/browser-use/blob/main/browser_use/agent/service.py", "retrieved": "2026-10-05", "what": "rerun_history, load_and_rerun, pause/resume, judge", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browser-use/browser-use/blob/main/CLOUD.md", "retrieved": "2026-10-05", "what": "Cloud concepts, session price line", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browser-use/browser-use/blob/main/server.json", "retrieved": "2026-10-05", "what": "MCP registry entry", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://pypi.org/pypi/browser-use/json", "retrieved": "2026-10-05", "what": "Versions and upload dates", "via": "PyPI JSON API" },
+        { "url": "https://browser-use.com/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://docs.browser-use.com/llms.txt", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "workflow-use",
+      "name": "workflow-use",
+      "vendor": "Browser Use",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "Record-and-replay workflows on top of browser-use: Chrome extension recorder, Python CLI, local GUI.",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Workflow Use is the easiest way to create and execute deterministic workflows with variables which fallback to Browser Use if a step fails.",
+        "words": 23,
+        "url": "https://github.com/browser-use/workflow-use/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Local (Python CLI, extension, GUI on localhost:5173) with an optional Browser-Use Cloud browser (use_cloud=True).",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "license": { "status": "verified", "value": "AGPL-3.0 (LICENSE file; GitHub sidebar). PyPI metadata only says 'License :: OSI Approved'.", "evidence": ["https://github.com/browser-use/workflow-use/blob/main/LICENSE", "https://pypi.org/pypi/workflow-use/json"] },
+      "pricing": {
+        "status": "partial",
+        "value": "No price for workflow-use itself. README: Browser-Use Cloud 'new signups get $10 free credits via OAuth or $1 via email'.",
+        "why": "Browser-Use Cloud pricing page blocked; the README credit figure differs from the browser-use README ($15).",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "Yes: 'Reuse: Run the workflow with different inputs, no AI needed'; run_with_no_ai() 'No LLM calls, uses semantic mapping'. run-as-tool fills variables from a prompt (LLM). Generation mode runs browser-use once, then stores a workflow.",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "A failing step falls back to Browser Use (an LLM agent). Roadmap items not yet checked: 'Self healing, if it fails automatically agent kicks in and updates the workflow file' and 'Improve LLM fallback when step fails (currently really bad)'.",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "batchInput": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"] },
+      "journalResume": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"] },
+      "duplicateProtection": { "status": "verified", "value": "Not documented.", "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"] },
+      "auditReport": {
+        "status": "verified",
+        "value": "GUI: 'Monitor workflow execution logs in real-time'; launch-gui captures logs to ./tmp/logs. Workflows stored as JSON with a metadata index.",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "Clone and run cli.py; Chrome extension recorder; GUI; PyPI package workflow-use. Roadmap (unchecked): 'Expose workflows as MCP tools'.",
+        "evidence": ["https://github.com/browser-use/workflow-use/blob/main/README.md", "https://pypi.org/pypi/workflow-use/json"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 4.2k stars, 356 forks (2026-10-05); latest commit shown Aug 27, 2026. PyPI workflow-use 0.2.11 uploaded 2025-11-19; 8 versions in the 365 days to 2026-10-05, none in the last 90. README: 'This project is in very early development so we don't recommend using this in production.'",
+        "evidence": ["https://github.com/browser-use/workflow-use", "https://github.com/browser-use/workflow-use/commits/main", "https://pypi.org/pypi/workflow-use/json"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Automatic LLM fallback when a step fails; Ritoko pauses instead.",
+          "Workflow generation from a natural-language task.",
+          "Visual GUI with workflow graphs and live logs.",
+          "Steps mapped semantically rather than by recorded selectors only."
+        ]
+      },
+      "notDocumented": [
+        "Spreadsheet batch input: not found in https://github.com/browser-use/workflow-use/blob/main/README.md on 2026-10-05",
+        "Per-row journal or crash resume: not found in https://github.com/browser-use/workflow-use/blob/main/README.md on 2026-10-05",
+        "Idempotency or handling of an uncertain write: not found in https://github.com/browser-use/workflow-use/blob/main/README.md on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/browser-use/workflow-use", "retrieved": "2026-10-05", "what": "Stars, forks, licence", "via": "WebFetch" },
+        { "url": "https://github.com/browser-use/workflow-use/commits/main", "retrieved": "2026-10-05", "what": "Latest commit date", "via": "WebFetch" },
+        { "url": "https://github.com/browser-use/workflow-use/blob/main/README.md", "retrieved": "2026-10-05", "what": "Features, roadmap, warning", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browser-use/workflow-use/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "GNU AGPL v3", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://pypi.org/pypi/workflow-use/json", "retrieved": "2026-10-05", "what": "Versions and upload dates", "via": "PyPI JSON API" }
+      ]
+    },
+    {
+      "id": "stagehand",
+      "name": "Stagehand / Browserbase",
+      "vendor": "Browserbase",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "SDK (TypeScript, Python, Go) combining Playwright-style page APIs with AI primitives act, extract, observe; runs on a local Chrome or Browserbase cloud browsers; hosted Browserbase MCP server.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Stagehand is the SDK for browser agents",
+        "words": 7,
+        "url": "https://github.com/browserbase/stagehand/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Both: localBrowser.launch() with a local Chrome, or browserbase.launch() with an API key. The server-side cache only works on Browserbase.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/README.md", "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/caching.mdx"]
+      },
+      "license": { "status": "verified", "value": "MIT for the SDK (LICENSE; README 'Licensed under the MIT License'). The Browserbase service's terms were not read.", "evidence": ["https://github.com/browserbase/stagehand/blob/main/LICENSE"] },
+      "pricing": {
+        "status": "partial",
+        "value": "SDK free. Model usage billed by your provider or through the Model Gateway, which 'picks the cheapest model for each action' (README).",
+        "why": "Browserbase prices not verified: www.browserbase.com and docs.browserbase.com were blocked.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/README.md"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "Two documented paths. (1) Passing an Action returned by observe() to act(): 'Replaying an Action skips model inference, the page snapshot, and the DOM-settle wait'; works with any browser. (2) Browserbase server-side cache of act/observe/extract: 'On a cache hit, the server returns the response directly with no LLM inference and no token cost'; 'With a local browser ... the cache option has no effect and every call runs inference'; caching 'is best-effort'.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/basics/act.mdx", "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/caching.mdx"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "selfHeal option: 'Whether Stagehand re-infers and retries a cached action when its recorded selector no longer resolves'; for a replayed Action it 're-infers the action and retries once'. A cached act() replays 'with self-healing turned off' and falls back to full inference when the selector no longer resolves. Re-inference is an LLM call billed as model usage.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/reference/stagehand.mdx", "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/basics/act.mdx", "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/caching.mdx"]
+      },
+      "batchInput": {
+        "status": "verified",
+        "value": "No data batch documented. experimentalBatch() runs a trusted JS callback in the extension service worker to avoid round trips; it is not a row or CSV batch.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/reference/stagehand.mdx"]
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "Not documented. Observability page: 'There is no history accessor on the Stagehand instance' (build a timeline from the log callback).",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/configuration/observability.mdx"]
+      },
+      "duplicateProtection": {
+        "status": "verified",
+        "value": "Guidance only: 'Escalate on observe() rather than act(): observe() only plans and never touches the page, so a retry cannot repeat a click, submit, or purchase that already landed before the error surfaced.' No idempotency key or uncertain-write state found.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/cost-optimization.mdx"]
+      },
+      "auditReport": {
+        "status": "verified",
+        "value": "On Browserbase: 'live views, recordings, and session metadata', session recordings with frame-by-frame playback; OTel traces (README); metrics and a log callback.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/configuration/observability.mdx", "https://github.com/browserbase/stagehand/blob/main/README.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "npm @browserbasehq/stagehand, PyPI stagehand, Go module; hosted Browserbase MCP server (`claude mcp add --transport http browserbase https://mcp.browserbase.com/mcp`); an experimental Claude Code integration shipped 'from the repository rather than publishing it as a standalone adapter'; docs pages for Codex and Cursor.",
+        "evidence": ["https://github.com/browserbase/stagehand/blob/main/README.md", "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/integrations/cli-agents/claude-code.mdx"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 25.5k stars, 1.8k forks (2026-10-05). npm @browserbasehq/stagehand 4.1.0 published 2026-09-09; 34 stable versions in the 365 days to 2026-10-05 across the v3 and v4 lines, 9 in the last 90. PyPI stagehand 4.1.0 uploaded 2026-09-09.",
+        "evidence": ["https://github.com/browserbase/stagehand", "https://registry.npmjs.org/@browserbasehq/stagehand", "https://pypi.org/pypi/stagehand/json"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Self-healing act() re-infers a broken action automatically; Ritoko pauses for a repair.",
+          "Cache results carry HIT, MISS or DISABLED status, so savings are observable per call.",
+          "Three SDK languages and natural-language actions mixed with code.",
+          "Hosted browsers with recordings, proxies and verified mode; a hosted MCP server with nothing to install.",
+          "Model-free replay of an observed action also works with a local browser."
+        ]
+      },
+      "notDocumented": [
+        "Spreadsheet or queue batch input: not found in https://github.com/browserbase/stagehand/blob/main/README.md or packages/docs/v4/reference/stagehand.mdx on 2026-10-05",
+        "Per-row journal or crash resume: not found in packages/docs/v4/configuration/observability.mdx or packages/docs/v4/reference/stagehand.mdx on 2026-10-05",
+        "Idempotency key or hold-for-review of an uncertain write: not found in packages/docs/v4/best-practices/cost-optimization.mdx or packages/docs/v4/basics/act.mdx on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/browserbase/stagehand", "retrieved": "2026-10-05", "what": "Stars, forks, licence, package folders", "via": "WebFetch" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/README.md", "retrieved": "2026-10-05", "what": "Positioning, self-heal, cache, MCP", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "MIT", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/caching.mdx", "retrieved": "2026-10-05", "what": "Source of docs.stagehand.dev/v4/best-practices/caching (blocked)", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/basics/act.mdx", "retrieved": "2026-10-05", "what": "Action replay, selfHeal", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/reference/stagehand.mdx", "retrieved": "2026-10-05", "what": "selfHeal option, experimentalBatch", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/configuration/observability.mdx", "retrieved": "2026-10-05", "what": "Recordings, history", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/best-practices/cost-optimization.mdx", "retrieved": "2026-10-05", "what": "Retry guidance", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/browserbase/stagehand/blob/main/packages/docs/v4/integrations/cli-agents/claude-code.mdx", "retrieved": "2026-10-05", "what": "Claude Code integration", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://registry.npmjs.org/@browserbasehq/stagehand", "retrieved": "2026-10-05", "what": "Versions and publish dates", "via": "npm registry JSON" },
+        { "url": "https://pypi.org/pypi/stagehand/json", "retrieved": "2026-10-05", "what": "Python SDK version", "via": "PyPI JSON API" },
+        { "url": "https://www.browserbase.com/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://docs.stagehand.dev/v4/best-practices/caching", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "skyvern",
+      "name": "Skyvern",
+      "vendor": "Skyvern",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "AI browser automation with LLMs and computer vision: Playwright-compatible SDK, no-code workflow builder, REST API, MCP server, Skyvern Cloud and self-hosting.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Skyvern automates browser-based workflows using LLMs and computer vision.",
+        "words": 9,
+        "url": "https://github.com/Skyvern-AI/skyvern/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Both: Skyvern Cloud, or self-hosted with pip (`skyvern quickstart`, SQLite at ~/.skyvern/data.db by default), Docker Compose or Kubernetes. 'Self-hosted Skyvern runs entirely on your infrastructure: your servers, your browsers, your LLM API keys.'",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/README.md", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/self-hosted/overview.mdx"]
+      },
+      "license": {
+        "status": "verified",
+        "value": "AGPL-3.0: 'All of the core logic powering Skyvern is available in this open source repository licensed under the AGPL-3.0 License, with the exception of anti-bot measures available in our managed cloud offering.' PyPI metadata has no licence field.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/README.md", "https://github.com/Skyvern-AI/skyvern/blob/main/LICENSE"]
+      },
+      "pricing": {
+        "status": "partial",
+        "value": "Docs plan table ('credit-based billing model'; 'Paid plans include a monthly credit allowance'): Free $0, ~200 actions; Hobby $29, ~1,200; Pro $149, ~6,200; Enterprise Custom, Unlimited. Currency shown only as '$'. Self-hosting uses your own LLM keys.",
+        "why": "Taken from docs/developers/optimization/cost-control.mdx in the repository; the pricing page www.skyvern.com/pricing was blocked.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/optimization/cost-control.mdx"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "Code caching: 'Later runs can execute that cached code directly, skipping LLM inference and screenshot analysis entirely.' Use run_with=\"code\" after a first run_with=\"agent\". Agents cache per block; 'conditional evaluation blocks, wait blocks, and code blocks always run live'. The cost page frames it as 'On Skyvern Cloud'.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/features/code-caching.mdx", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/optimization/cost-control.mdx"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "Automatic: 'If the cached code fails because a page changed, Skyvern falls back to the agent automatically and regenerates the cache.' The agent run uses the LLM (on Cloud, credits). SDK actions can also try a selector first and fall back to AI ('AI fallback - tries selector first, falls back to AI if it fails').",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/features/code-caching.mdx", "https://github.com/Skyvern-AI/skyvern/blob/main/README.md"]
+      },
+      "batchInput": {
+        "status": "verified",
+        "value": "Loop block ('Repeat a sequence of blocks for each item in a list') with 'Next Loop on Failure'; File Parser block parses 'PDFs, CSVs, Excel files, images, DOCX files, and ZIP archives'.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/cloud/building-agents/configure-blocks.mdx"]
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "Run statuses (completed, failed, terminated, timed_out, canceled), webhooks and retry strategies; 'Pause or resume' applies to schedules. Per-item crash resume of a batch: not found.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/going-to-production/error-handling.mdx", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/cloud/building-agents/scheduling.mdx"]
+      },
+      "duplicateProtection": {
+        "status": "verified",
+        "value": "No idempotency key or uncertain-write state found. Error docs: 'A failed run hit infrastructure problems, so retry might work.' Changelog, week of Sep 7, 2026: 'Supported job application forms now wait for challenge completion before the submit continues, reducing duplicate submissions.'",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/going-to-production/error-handling.mdx", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/changelog.mdx"]
+      },
+      "auditReport": {
+        "status": "verified",
+        "value": "Artifacts per run: 'recordings of the browser session, screenshots at each step, the AI's reasoning, and network traffic' (HAR, Playwright traces) via get_run_artifacts.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/debugging/using-artifacts.mdx"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "PyPI skyvern, npm @skyvern/client, REST API, MCP server (Claude Desktop, Claude Code, Cursor, Windsurf, Codex and others), Cloud UI, Zapier / Make.com / n8n integrations; scheduling with cron and timezone.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern/blob/main/README.md", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/getting-started/mcp.mdx", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/cloud/building-agents/scheduling.mdx"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 23.1k stars, 2.2k forks (2026-10-05). PyPI skyvern 1.0.55 uploaded 2026-10-01; 50 stable versions in the 365 days to 2026-10-05, 5 in the last 90. Weekly changelog, latest heading 'Week of Sep 28, 2026'.",
+        "evidence": ["https://github.com/Skyvern-AI/skyvern", "https://pypi.org/pypi/skyvern/json", "https://github.com/Skyvern-AI/skyvern/blob/main/docs/changelog.mdx"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Model-free cached replay plus automatic agent fallback and cache regeneration when a page changes; Ritoko needs an agent or person to repair.",
+          "No-code builder, scheduling, loops over lists and file parsing (CSV, Excel, PDF).",
+          "2FA/TOTP and password-manager integrations; vision for sites never seen before.",
+          "Rich run artifacts (recordings, HAR, traces) and a hosted cloud, or self-hosting on Docker or Kubernetes."
+        ]
+      },
+      "notDocumented": [
+        "Per-item crash resume of a batch: not found in https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/going-to-production/error-handling.mdx or docs/cloud/building-agents/configure-blocks.mdx on 2026-10-05",
+        "Idempotency key or hold-for-review of a write whose outcome is unknown: not found in https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/going-to-production/error-handling.mdx or docs/changelog.mdx on 2026-10-05",
+        "Whether code caching is available in the self-hosted AGPL build: not stated in docs/developers/features/code-caching.mdx on 2026-10-05 (the cost page says 'On Skyvern Cloud')"
+      ],
+      "sources": [
+        { "url": "https://github.com/Skyvern-AI/skyvern", "retrieved": "2026-10-05", "what": "Stars, forks, licence, folders", "via": "WebFetch" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/README.md", "retrieved": "2026-10-05", "what": "Positioning, SDK, licence statement", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "GNU AGPL v3", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/features/code-caching.mdx", "retrieved": "2026-10-05", "what": "Code caching and fallback", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/optimization/cost-control.mdx", "retrieved": "2026-10-05", "what": "Plan table, run_with", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/going-to-production/error-handling.mdx", "retrieved": "2026-10-05", "what": "Run statuses, retries", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/cloud/building-agents/configure-blocks.mdx", "retrieved": "2026-10-05", "what": "Loop and File Parser blocks", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/cloud/building-agents/scheduling.mdx", "retrieved": "2026-10-05", "what": "Cron schedules", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/debugging/using-artifacts.mdx", "retrieved": "2026-10-05", "what": "Artifacts", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/self-hosted/overview.mdx", "retrieved": "2026-10-05", "what": "Self-hosting", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/developers/getting-started/mcp.mdx", "retrieved": "2026-10-05", "what": "MCP server clients", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/Skyvern-AI/skyvern/blob/main/docs/changelog.mdx", "retrieved": "2026-10-05", "what": "Weekly changelog", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://pypi.org/pypi/skyvern/json", "retrieved": "2026-10-05", "what": "Versions and upload dates", "via": "PyPI JSON API" },
+        { "url": "https://www.skyvern.com/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "taprun",
+      "name": "taprun (tap)",
+      "vendor": "LeonTing1010 (Taprun)",
+      "optional": false,
+      "category": {
+        "status": "verified",
+        "value": "Local MCP server, CLI and Chrome extension: an AI captures a site task once into a JSON plan that is replayed without a model.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Driven in your own Chrome, captured once, replayed forever at zero LLM tokens.",
+        "words": 13,
+        "url": "https://github.com/LeonTing1010/tap/blob/main/README.md"
+      },
+      "localOrCloud": {
+        "status": "verified",
+        "value": "Local: runs in the user's Chrome through the extension, or a Playwright runtime. 'Saved taps, secrets, and traces live under ~/.tap/ on your machine only.'",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "license": {
+        "status": "unverified",
+        "value": "The vendor's own sources conflict about the tap binary: README 'Chrome Extension & docs: MIT' and 'without depending on the proprietary Taprun engine'; packages/README.md 'The proprietary Tap CLI that consumes these packages is closed-source'; npm @taprun/cli 0.30.0 and its platform binary packages declare 'AGPL-3.0'; site source docs/pricing.html 'Taprun ships as a free, MIT-licensed engine you run yourself' and docs/index.html 'Taprun is MIT-licensed, written in TypeScript on Deno, ships as a single signed binary.' The referenced engine repository github.com/LeonTing1010/tap-core returned 404.",
+        "why": "Conflicting statements in primary sources; engine source not public as of 2026-10-05.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md", "https://github.com/LeonTing1010/tap/blob/main/packages/README.md", "https://registry.npmjs.org/@taprun/cli", "https://github.com/LeonTing1010/tap/blob/main/docs/pricing.html", "https://github.com/LeonTing1010/tap/blob/main/docs/index.html"]
+      },
+      "pricing": {
+        "status": "partial",
+        "value": "Site source docs/pricing.html: 'Self-serve' '$0 / forever' 'Free · MIT-licensed'; 'Done-for-you' '$99 / month' (USD in the page's structured data), 'Flat retainer · cancel anytime', up to 10 portals, 'Breakage fixes included, 48h response'. docs/llms.txt: 'All features free during v0.x. No tier gating in the engine'. SECURITY.md still describes Free, Hacker and Pro tiers with licence validation.",
+        "why": "taprun.dev was blocked, so the deployed pricing page was not verified; repository sources disagree with SECURITY.md.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/docs/pricing.html", "https://github.com/LeonTing1010/tap/blob/main/docs/llms.txt", "https://github.com/LeonTing1010/tap/blob/main/SECURITY.md"]
+      },
+      "replayModel": {
+        "status": "verified",
+        "value": "Yes: 'every replay after that is pure data dispatch — same result every call, $0 in tokens, no agent in the loop'. Capture uses AI once (bring your own key: Claude, OpenAI, DeepSeek or a local OpenAI-compatible model); some sites are 'compiled without AI' when an API is detected.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "selfHeal": {
+        "status": "verified",
+        "value": "Detect, then re-capture: `tap verify` returns a drift verdict; README diagram: 'Repair: re-run capture against the same site/name; the next verify rebaselines after human review' ('only when needed'); site source: 'Re-running [capture] against the same site/name overwrites the stored Plan and resets the baseline — that is the heal path.' (the page fills [capture] from a template variable) Re-capture uses the user's AI key. Self-serve: 'You fix drifts yourself'; the paid done-for-you plan includes breakage fixes.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md", "https://github.com/LeonTing1010/tap/blob/main/docs/index.html", "https://github.com/LeonTing1010/tap/blob/main/docs/pricing.html"]
+      },
+      "batchInput": {
+        "status": "verified",
+        "value": "Plans have foreach and parallel ops; taps compose with Unix pipes (`tap A | tap B`). CSV or spreadsheet input: not found.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/packages/spec/src/types.ts", "https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "journalResume": {
+        "status": "verified",
+        "value": "Each run 'Auto-emits a Run record with transitions'; intent states preflight, in_flight, committed, aborted, uncertain. Resuming a multi-row batch after a crash: not found.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/docs/llms.txt", "https://github.com/LeonTing1010/tap/blob/main/packages/spec/src/types.ts"]
+      },
+      "duplicateProtection": {
+        "status": "verified",
+        "value": "Write plans require a key ('Write variant — act + key both required') and may set confirm, postcondition and dedup_ttl_seconds; `mark` will 'resolve an intent_uncertain Run to committed or aborted'. How the closed engine applies dedup_ttl_seconds is not described in the pages read.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/packages/spec/src/types.ts", "https://github.com/LeonTing1010/tap/blob/main/docs/llms.txt"]
+      },
+      "auditReport": {
+        "status": "verified",
+        "value": "Site source: 'An auditable, credential-safe record of every browser task your AI agent runs.' Run records with transitions; plans are JSON that can be diffed in git; traces under ~/.tap/.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/docs/index.html", "https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "distribution": {
+        "status": "verified",
+        "value": "Claude Code plugin (`/plugin marketplace add LeonTing1010/taprun`), MCP server (`npx -y @taprun/cli mcp stdio`), `tap` CLI binary (npx, Homebrew, install script), Chrome extension, `tap embed` for Cursor, VS Code, Claude Desktop and others, Claude Desktop .mcpb; converters from Playwright, Puppeteer and Stagehand scripts.",
+        "evidence": ["https://github.com/LeonTing1010/tap/blob/main/README.md"]
+      },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 18 stars, 2 forks, 683 commits (2026-10-05); release v0.30.0 dated 02 Aug. npm @taprun/cli 0.30.0 published 2026-08-02; 49 versions since the first on 2026-04-07, 16 in the last 90 days.",
+        "evidence": ["https://github.com/LeonTing1010/tap", "https://github.com/LeonTing1010/tap/releases", "https://registry.npmjs.org/@taprun/cli"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "Same core promise of model-free replay, plus a `verify` drift check that can run on cron before data goes stale.",
+          "Documented uncertain-intent state with an explicit `mark` resolve verb, and write keys with a dedup TTL.",
+          "Uses the user's live logged-in Chrome through an extension; converters from existing Playwright, Puppeteer and Stagehand scripts.",
+          "Composable taps (pipes), an environment check (`tap doctor --env` in its changelog), and a paid done-for-you service for teams that want the outcome."
+        ]
+      },
+      "notDocumented": [
+        "Spreadsheet (CSV/XLSX) batch input: not found in https://github.com/LeonTing1010/tap/blob/main/README.md or docs/llms.txt on 2026-10-05",
+        "Per-row journal with crash resume across a batch: not found in https://github.com/LeonTing1010/tap/blob/main/README.md or docs/llms.txt on 2026-10-05",
+        "Semantics of dedup_ttl_seconds and of holding an uncertain write: not found in https://github.com/LeonTing1010/tap/blob/main/packages/spec/src/types.ts or docs/llms.txt on 2026-10-05",
+        "Public engine source: https://github.com/LeonTing1010/tap-core returned 404 on 2026-10-05"
+      ],
+      "sources": [
+        { "url": "https://github.com/LeonTing1010/tap", "retrieved": "2026-10-05", "what": "Stars, forks, commits, folders", "via": "WebFetch" },
+        { "url": "https://github.com/LeonTing1010/tap/releases", "retrieved": "2026-10-05", "what": "Latest releases", "via": "WebFetch" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/README.md", "retrieved": "2026-10-05", "what": "Positioning, replay, repair, install, licence line", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/LICENSE", "retrieved": "2026-10-05", "what": "MIT text (repository)", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/packages/README.md", "retrieved": "2026-10-05", "what": "Proprietary scope: forge, verify, heal", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/packages/spec/src/types.ts", "retrieved": "2026-10-05", "what": "Write plans, intent states, verdicts", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/SECURITY.md", "retrieved": "2026-10-05", "what": "Tier names, licence validation", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/docs/pricing.html", "retrieved": "2026-10-05", "what": "Site source of taprun.dev pricing (docs/CNAME is taprun.dev)", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/docs/index.html", "retrieved": "2026-10-05", "what": "Site source of the homepage", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/LeonTing1010/tap/blob/main/docs/llms.txt", "retrieved": "2026-10-05", "what": "Verbs, pricing note", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://registry.npmjs.org/@taprun/cli", "retrieved": "2026-10-05", "what": "Versions, publish dates, licence field", "via": "npm registry JSON" },
+        { "url": "https://taprun.dev/", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://github.com/LeonTing1010/tap-core", "retrieved": "2026-10-05", "what": "HTTP 404", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "chatgpt-agent",
+      "name": "ChatGPT agent / Operator",
+      "vendor": "OpenAI",
+      "optional": false,
+      "category": { "status": "unverified", "why": "Every OpenAI host tried was blocked by the egress proxy on 2026-10-05." },
+      "positioning": { "status": "unverified", "why": "openai.com and help.openai.com blocked." },
+      "localOrCloud": { "status": "unverified", "why": "No primary source reachable." },
+      "license": { "status": "unverified", "why": "No primary source reachable." },
+      "pricing": { "status": "unverified", "why": "chatgpt.com/pricing blocked." },
+      "replayModel": { "status": "unverified", "why": "No primary source reachable." },
+      "selfHeal": { "status": "unverified", "why": "No primary source reachable." },
+      "batchInput": { "status": "unverified", "why": "No primary source reachable." },
+      "journalResume": { "status": "unverified", "why": "No primary source reachable." },
+      "duplicateProtection": { "status": "unverified", "why": "No primary source reachable." },
+      "auditReport": { "status": "unverified", "why": "No primary source reachable." },
+      "distribution": { "status": "unverified", "why": "No primary source reachable." },
+      "maturity": { "status": "unverified", "why": "No primary source reachable; whether Operator still exists separately was not checked." },
+      "strengthsVsRitoko": { "status": "unverified", "items": [], "why": "Nothing verified to compare." },
+      "notDocumented": [],
+      "sources": [
+        { "url": "https://help.openai.com/en/articles/11752874-chatgpt-agent", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://openai.com/index/introducing-chatgpt-agent/", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://chatgpt.com/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://platform.openai.com/docs/guides/tools-computer-use", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://developers.openai.com/api/docs/guides/tools-computer-use", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://cdn.openai.com/pdf/839e66fc-602c-48bf-81d3-b21eacc3459d/chatgpt_agent_system_card.pdf", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED (URL found by web search only)", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "n8n",
+      "name": "n8n",
+      "vendor": "n8n",
+      "optional": true,
+      "category": {
+        "status": "verified",
+        "value": "Workflow automation platform with a visual canvas, custom code and integrations; self-hosted or cloud.",
+        "evidence": ["https://github.com/n8n-io/n8n/blob/master/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Fair-code platform to build and deploy AI agents and workflows.",
+        "words": 10,
+        "url": "https://github.com/n8n-io/n8n/blob/master/README.md"
+      },
+      "localOrCloud": { "status": "verified", "value": "'run it self-hosted or in the cloud' (Docker quick start in README).", "evidence": ["https://github.com/n8n-io/n8n/blob/master/README.md"] },
+      "license": {
+        "status": "verified",
+        "value": "Fair-code: Sustainable Use License, with files containing '.ee.' under the n8n Enterprise License ('Source Available').",
+        "evidence": ["https://github.com/n8n-io/n8n/blob/master/LICENSE.md", "https://github.com/n8n-io/n8n/blob/master/README.md"]
+      },
+      "pricing": { "status": "unverified", "why": "n8n.io/pricing blocked." },
+      "replayModel": {
+        "status": "partial",
+        "value": "Saved workflows run as node graphs; the README does not mention browser automation.",
+        "why": "docs.n8n.io blocked; whether a browser node or a model is involved for portals without an API was not verified."
+      },
+      "selfHeal": { "status": "unverified", "why": "docs.n8n.io blocked." },
+      "batchInput": { "status": "unverified", "why": "docs.n8n.io blocked." },
+      "journalResume": { "status": "unverified", "why": "docs.n8n.io blocked." },
+      "duplicateProtection": { "status": "unverified", "why": "docs.n8n.io blocked." },
+      "auditReport": { "status": "partial", "value": "README: 'Self-host or deploy securely with role-based access, audit trails, and support for sensitive data'.", "why": "Scope of audit trails not checked in docs (blocked).", "evidence": ["https://github.com/n8n-io/n8n/blob/master/README.md"] },
+      "distribution": { "status": "verified", "value": "Docker image, npm package n8n, n8n cloud; 1500+ integrations (README).", "evidence": ["https://github.com/n8n-io/n8n/blob/master/README.md", "https://registry.npmjs.org/n8n"] },
+      "maturity": {
+        "status": "verified",
+        "value": "github.com page: 206.7k stars, 61.0k forks (2026-10-05). npm n8n 2.41.7 published 2026-10-05; 411 stable versions in the 365 days to 2026-10-05 (several parallel lines).",
+        "evidence": ["https://github.com/n8n-io/n8n", "https://registry.npmjs.org/n8n"]
+      },
+      "strengthsVsRitoko": {
+        "status": "verified",
+        "items": [
+          "For portals that do have an API: 1500+ integrations, a visual editor and self-hosting; a better fit than browser replay.",
+          "Very large adoption (206.7k stars) and release cadence."
+        ]
+      },
+      "notDocumented": ["Browser automation for portals without an API: not mentioned in https://github.com/n8n-io/n8n/blob/master/README.md on 2026-10-05 (docs not reachable)"],
+      "sources": [
+        { "url": "https://github.com/n8n-io/n8n", "retrieved": "2026-10-05", "what": "Stars, forks, licence", "via": "WebFetch" },
+        { "url": "https://github.com/n8n-io/n8n/blob/master/README.md", "retrieved": "2026-10-05", "what": "Positioning, capabilities, licence summary", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/n8n-io/n8n/blob/master/LICENSE.md", "retrieved": "2026-10-05", "what": "Sustainable Use License", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://registry.npmjs.org/n8n", "retrieved": "2026-10-05", "what": "Versions and publish dates", "via": "npm registry JSON" },
+        { "url": "https://docs.n8n.io/hosting/", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" },
+        { "url": "https://n8n.io/pricing/", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "anchor-browser",
+      "name": "Anchor Browser",
+      "vendor": "Anchor",
+      "optional": true,
+      "category": {
+        "status": "partial",
+        "value": "Cloud browser for AI agents, with SDKs and an agent plugin.",
+        "why": "Only GitHub repositories were readable; anchorbrowser.io was blocked.",
+        "evidence": ["https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md"]
+      },
+      "positioning": {
+        "status": "verified",
+        "quote": "Cloud browser for AI agents — one plugin, seven agents.",
+        "words": 9,
+        "url": "https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md"
+      },
+      "localOrCloud": { "status": "verified", "value": "Cloud browsers; the plugin needs an API key from app.anchorbrowser.io.", "evidence": ["https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md"] },
+      "license": { "status": "partial", "value": "Plugin README shows an MIT badge.", "why": "Service terms not read (site blocked).", "evidence": ["https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md"] },
+      "pricing": { "status": "unverified", "why": "anchorbrowser.io/pricing blocked." },
+      "replayModel": { "status": "unverified", "why": "Product docs blocked; the TypeScript SDK README lists agent tasks and recordings but no replay mode." },
+      "selfHeal": { "status": "unverified", "why": "Product docs blocked." },
+      "batchInput": { "status": "unverified", "why": "Product docs blocked." },
+      "journalResume": { "status": "unverified", "why": "Product docs blocked." },
+      "duplicateProtection": { "status": "unverified", "why": "Product docs blocked." },
+      "auditReport": { "status": "partial", "value": "SDK supports session recordings (`recording: { active: true }`).", "why": "Docs blocked.", "evidence": ["https://github.com/anchorbrowser/AnchorBrowser-SDK-Typescript/blob/main/README.md"] },
+      "distribution": {
+        "status": "verified",
+        "value": "Agent plugin for Claude Code, Cursor, Codex, Grok, Gemini CLI, DeepSeek Harness and Hermes; TypeScript and Python SDKs; Homebrew tap for a CLI.",
+        "evidence": ["https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md", "https://github.com/anchorbrowser"]
+      },
+      "maturity": { "status": "partial", "value": "github.com/anchorbrowser (2026-10-05): AnchorBrowser-SDK-Typescript 5 stars, AnchorBrowser-SDK-Python 2 stars, anchorbrowser-plugin 0 stars; plugin README badge 'version 0.1.0'.", "why": "Product usage and release history not checked.", "evidence": ["https://github.com/anchorbrowser"] },
+      "strengthsVsRitoko": { "status": "partial", "items": ["Hosted browsers for agents across seven agent hosts from one plugin."], "why": "Little verified beyond the repositories." },
+      "notDocumented": [],
+      "sources": [
+        { "url": "https://github.com/anchorbrowser", "retrieved": "2026-10-05", "what": "Organization repositories and stars", "via": "WebFetch" },
+        { "url": "https://github.com/anchorbrowser/anchorbrowser-plugin/blob/main/README.md", "retrieved": "2026-10-05", "what": "Plugin positioning and installs", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://github.com/anchorbrowser/AnchorBrowser-SDK-Typescript/blob/main/README.md", "retrieved": "2026-10-05", "what": "SDK surface", "via": "raw.githubusercontent.com (HTTP GET)" },
+        { "url": "https://anchorbrowser.io/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    },
+    {
+      "id": "zapier",
+      "name": "Zapier",
+      "vendor": "Zapier",
+      "optional": true,
+      "category": { "status": "unverified", "why": "zapier.com blocked on 2026-10-05." },
+      "positioning": { "status": "unverified", "why": "zapier.com blocked." },
+      "localOrCloud": { "status": "unverified", "why": "zapier.com blocked." },
+      "license": { "status": "unverified", "why": "zapier.com blocked." },
+      "pricing": { "status": "unverified", "why": "zapier.com/pricing blocked." },
+      "replayModel": { "status": "unverified", "why": "zapier.com blocked." },
+      "selfHeal": { "status": "unverified", "why": "zapier.com blocked." },
+      "batchInput": { "status": "unverified", "why": "zapier.com blocked." },
+      "journalResume": { "status": "unverified", "why": "zapier.com blocked." },
+      "duplicateProtection": { "status": "unverified", "why": "zapier.com blocked." },
+      "auditReport": { "status": "unverified", "why": "zapier.com blocked." },
+      "distribution": { "status": "unverified", "why": "zapier.com blocked." },
+      "maturity": { "status": "unverified", "why": "zapier.com blocked." },
+      "strengthsVsRitoko": { "status": "unverified", "items": [], "why": "Nothing verified." },
+      "notDocumented": [],
+      "sources": [
+        { "url": "https://zapier.com/pricing", "retrieved": "2026-10-05", "what": "Not opened: EGRESS_BLOCKED", "via": "WebFetch (failed)" }
+      ]
+    }
+  ]
+}

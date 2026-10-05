@@ -1,0 +1,120 @@
+name: "Tell us what hurts in your batch automation"
+description: "You run the same browser or portal task over many rows, and something breaks or costs too much. Describe the worst case. You do not need to use Ritoko."
+title: "[Pain] "
+labels:
+  - pain-report
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **You do not need to use Ritoko to fill this in.** This form is for anyone who runs the same browser or portal task over many rows, with an AI agent, a script, an RPA tool or by hand.
+
+        The maintainer reads these reports to decide what to work on next. A report is not a feature request and promises nothing.
+
+        **This issue will be public.** Do not paste passwords, API keys, session cookies, customer data or private URLs. Describe the situation instead ("a supplier portal, one invoice per row") and use made-up values if you need an example.
+
+  - type: textarea
+    id: automates
+    attributes:
+      label: "What do you automate?"
+      description: "The kind of site or system and the task, with no private data. For example: a supplier portal where you enter one invoice per row, or a marketplace back office where you update prices."
+      placeholder: "The task, the kind of site, and what one row is."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: "Who is this automation for?"
+      options:
+        - "Me or my own product"
+        - "My clients (I am a consultant or an agency)"
+        - "My employer's back office (accounting, e-commerce, insurance or similar)"
+        - "Another team or purpose"
+
+  - type: input
+    id: rows
+    attributes:
+      label: "Rows per run"
+      description: "Roughly how many rows or items one run covers. A guess is fine."
+      placeholder: "For example 40, or 200 to 500"
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: "How often do you run it?"
+      options:
+        - "Several times a day"
+        - "Daily"
+        - "Weekly"
+        - "Monthly"
+        - "Occasionally"
+        - "Only once so far"
+
+  - type: dropdown
+    id: tools
+    attributes:
+      label: "Which agent or tool do you use today?"
+      description: "Pick everything you use for this task."
+      multiple: true
+      options:
+        - "Claude in Chrome"
+        - "Claude Code with Playwright MCP"
+        - "Claude Code with another browser tool"
+        - "Codex"
+        - "browser-use"
+        - "Stagehand or Browserbase"
+        - "Skyvern"
+        - "Playwright, Puppeteer or Selenium scripts"
+        - "An RPA product"
+        - "n8n, Make or Zapier"
+        - "By hand, copy and paste"
+        - "Something else"
+
+  - type: checkboxes
+    id: pain
+    attributes:
+      label: "What breaks or costs too much?"
+      description: "Tick everything that applies, or nothing. Tell the story in the next field."
+      options:
+        - label: "Cost per row (model usage) is too high"
+        - label: "Runs are too slow"
+        - label: "Duplicates (the same row was submitted twice)"
+        - label: "Progress was lost after a crash or restart"
+        - label: "The site changed and the automation broke"
+        - label: "Login or session expired during a run"
+        - label: "The agent stopped midway (long list, timeout or retry loop)"
+        - label: "I cannot prove what happened to each row, or the agent said done when it was not"
+        - label: "Something else (explain below)"
+
+  - type: textarea
+    id: incident
+    attributes:
+      label: "The worst incident, in your own words"
+      description: "What happened, when and how you noticed, what it cost you (time, money, a customer) and what you did next. A rough story is more useful than a polished one. Leave out names and private data."
+      placeholder: "What happened. When and how you noticed. What it cost. What you did next."
+    validations:
+      required: true
+
+  - type: textarea
+    id: done-right
+    attributes:
+      label: "What would 'done right' look like?"
+      description: "If this ran perfectly next time, what would you see at the end, and what would you stop doing by hand?"
+
+  - type: checkboxes
+    id: call
+    attributes:
+      label: "A 20-minute call (optional)"
+      description: "If you tick this, the maintainer replies in this issue to suggest a time. Contact stays in this issue: nobody will look up your email address or message you anywhere else. If you would rather not write an email address in public, say so in a comment and ask for another way. You can change your mind at any time. There is no payment and no sales pitch: the call is about what happened to you."
+      options:
+        - label: "I am open to a 20-minute call about this"
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: "Privacy check"
+      description: "Public issues are visible to everyone. See the note at the top of this form."
+      options:
+        - label: "I removed private data from this report"
+          required: true

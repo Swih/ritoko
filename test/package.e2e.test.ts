@@ -39,7 +39,7 @@ function npmCli() {
   return cli
 }
 
-function node(args: string[], cwd: string, home: string) {
+function node(args: string[], cwd: string, home: string, timeoutMs = 60_000) {
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((done, reject) => {
     const child = spawn(process.execPath, args, {
       cwd,
@@ -58,7 +58,7 @@ function node(args: string[], cwd: string, home: string) {
     const timer = setTimeout(() => {
       child.kill()
       reject(new Error(`Packaged command timed out: ${args.join(' ')}\n${stderr}`))
-    }, 60_000)
+    }, timeoutMs)
     child.stdout.on('data', (data) => {
       stdout += data
     })
@@ -207,6 +207,9 @@ it('runs the npm tarball using only installed runtime dependencies, CLI and stdi
     ],
     root,
     home,
+    // A cold Windows registry download can exceed the runtime-command budget.
+    // Keep the real install and its assertions; give only this network step more time.
+    180_000,
   )
   expect(installed.code, installed.stderr).toBe(0)
   const packageRoot = join(root, 'node_modules', 'ritoko')
@@ -258,4 +261,4 @@ it('runs the npm tarball using only installed runtime dependencies, CLI and stdi
   } finally {
     await service.close()
   }
-}, 120_000)
+}, 240_000)

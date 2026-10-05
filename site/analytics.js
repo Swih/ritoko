@@ -1,4 +1,5 @@
 import { analyticsConfig as config } from './analytics-config.js'
+import { contentRoutes } from './content-routes.js'
 
 const preferenceKey = 'ritoko-analytics-consent'
 const sections = new Set([
@@ -19,9 +20,11 @@ const sections = new Set([
   'faq',
 ])
 const pages = new Set([
+  ...contentRoutes,
   '/',
   '/index',
   '/use-cases',
+  '/benchmarks',
   '/watch',
   '/contact',
   '/privacy',

@@ -1,7 +1,7 @@
 {
   "name": "ritoko",
-  "version": "0.1.1",
-  "description": "Record a browser task once, rerun it with new data, verified and resumable.",
+  "version": "0.2.0",
+  "description": "Resumable browser, API and MCP workflows for AI agents. Verify CSV/Excel batches and review uncertain writes.",
   "skills": "./skills/",
   "mcpServers": {
     "ritoko": {

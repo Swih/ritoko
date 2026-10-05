@@ -1,0 +1,132 @@
+name: "Bug report"
+description: "Ritoko does not work as documented. Include versions and a redacted reproduction."
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check the [existing issues](https://github.com/Swih/ritoko/issues) first.
+
+        **This issue will be public.** Do not paste passwords, API keys, session cookies, customer data or private URLs. `ritoko report` lists each row's business key (often an email address or a reference), and the run folder printed after `Evidence:` can hold screenshots of the pages Ritoko visited and the files it saved. Replace real keys with made-up ones, and do not attach screenshots or files you have not checked.
+
+        If you think you found a security problem, do not post details here. Use https://ritoko.com/contact to ask for a private way to report it, with a one-line summary and no exploit details.
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: "How did you install Ritoko?"
+      options:
+        - "Claude Code plugin from the Git marketplace"
+        - "Codex plugin from the Git marketplace"
+        - "npx ritoko@latest in an MCP client"
+        - "npx with a pinned version"
+        - "Local Git clone"
+        - "Another way"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "Ritoko version"
+      description: "There is no `--version` option yet. Claude Code plugin: run `claude plugin list` and copy the Version line of ritoko. Local clone: run `node -p \"require('./package.json').version\"` in the clone folder and add the output of `git rev-parse --short HEAD`. npx: give the version you pinned, or run `npm view ritoko version` for the latest published one. Add the date you installed."
+      placeholder: "For example: 0.1.1, plus the install date"
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: "Node.js version"
+      description: "Output of `node --version`, run where your client starts Ritoko. Ritoko needs Node.js 24 or newer."
+      placeholder: "For example v24.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: "Operating system and version"
+      placeholder: "For example Windows 11, macOS 15, Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: "Which client runs Ritoko?"
+      options:
+        - "Claude Code"
+        - "Codex CLI"
+        - "The Ritoko command line, no agent"
+        - "Another MCP client (name it below)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: input
+    id: client-version
+    attributes:
+      label: "Client name and version"
+      description: "For example the output of `claude --version`. For another client, give its name and version."
+
+  - type: dropdown
+    id: browser-mode
+    attributes:
+      label: "Browser mode"
+      description: "The direct runner uses your own Chrome unless RITOKO_BROWSER=clean or a headless run is chosen. Host mode uses the agent's own browser tools."
+      options:
+        - "Direct runner, my own Chrome (the default)"
+        - "Direct runner, clean Chrome profile (RITOKO_BROWSER=clean)"
+        - "Direct runner, headless"
+        - "Host mode, the agent's own browser tools"
+        - "No browser (HTTP or MCP steps only)"
+        - "I am not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "Redacted reproduction"
+      description: "The shortest steps that trigger the bug, plus the workflow JSON or the failing step with real URLs, labels and values replaced by made-up ones."
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "What did you expect to happen?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: "What happened instead?"
+      description: "Include the exact error message, and the run status if there was a run."
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: "Output or logs (redacted)"
+      description: "Error text, `ritoko report` output or MCP tool results. Remove real business keys first. Optional."
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: "Before you submit"
+      options:
+        - label: "I searched the existing issues"
+          required: true
+        - label: "I removed private data from this report"
+          required: true

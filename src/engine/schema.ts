@@ -147,6 +147,28 @@ export type Step = z.infer<typeof Step> & { id: string }
 type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never
 export type StepBody = WithoutId<Step>
 
+/** Explicit destination lookup; only a positive predicate establishes presence or absence. */
+const LookupPredicate = z.strictObject({
+  json: checks.refine((value) => Object.keys(value).length > 0, 'needs JSON business evidence'),
+  status: z
+    .array(
+      z
+        .number()
+        .int()
+        .refine(
+          (value) => (value >= 200 && value < 300) || value === 404 || value === 410,
+          'lookup statuses must be 2xx, 404 or 410',
+        ),
+    )
+    .nonempty()
+    .optional(),
+})
+const Ensure = z.strictObject({
+  read: Step.transform((step): Step => ({ ...step, id: step.id ?? 'ensure-read' })),
+  present: LookupPredicate,
+  absent: LookupPredicate,
+})
+
 /** An MCP server a workflow calls: a program to start, a URL, or the one of the same name in Claude Code's configuration. */
 const Server = z.union([
   z.strictObject({
@@ -166,6 +188,7 @@ export const Workflow = z
     description: z.string(),
     /** Explicitly opt in for batches that never change data on the target site. */
     readOnly: z.boolean().default(false),
+    ensure: Ensure.optional(),
     params: z
       .record(
         z.string(),
@@ -209,7 +232,12 @@ export const Workflow = z
         while (taken.has(`s${++next}`));
         return { ...s, id: `s${next}` }
       })
-    return { ...wf, setup: named(wf.setup), item: named(wf.item), teardown: named(wf.teardown) }
+    return {
+      ...wf,
+      setup: named(wf.setup),
+      item: named(wf.item),
+      teardown: named(wf.teardown),
+    }
   })
 export type Workflow = z.infer<typeof Workflow>
 export type WorkflowInput = z.input<typeof Workflow>

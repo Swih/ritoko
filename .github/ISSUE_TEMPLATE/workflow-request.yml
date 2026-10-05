@@ -1,0 +1,107 @@
+name: "Request a workflow to replay"
+description: "One concrete task you repeat over many rows, described without private data: where it happens, what goes in, how you know it worked, and which step cannot be undone."
+title: "[Workflow] "
+labels:
+  - workflow-request
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for **one concrete task** you repeat over many rows. The maintainer may ask follow-up questions here. A request promises no workflow and no date.
+
+        Tasks that need a CAPTCHA to be solved or anti-bot protection to be bypassed are out of scope. Ritoko automates services you are allowed to use.
+
+        **This issue will be public.** Do not paste passwords, API keys, session cookies, real rows or private URLs. Use made-up values. If the task involves client or customer details, or you would rather not discuss it in public, use the private contact page instead: https://ritoko.com/contact
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: "Where does the work happen?"
+      options:
+        - "A public website (no login)"
+        - "A website behind a login (back office, portal, SaaS)"
+        - "An internal tool or intranet"
+        - "An HTTP API"
+        - "A tool that speaks MCP"
+        - "A mix of these"
+        - "I am not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: kind
+    attributes:
+      label: "What kind of site or system is it?"
+      description: "Describe the kind, not the address, unless the site is public. For example: supplier portal, marketplace seller back office, insurer extranet, accounting web app."
+
+  - type: input
+    id: public-address
+    attributes:
+      label: "Public address (only if the site is public)"
+      description: "Leave it empty for anything behind a login. Do not include account IDs or session parameters."
+
+  - type: textarea
+    id: inputs
+    attributes:
+      label: "What does one row look like?"
+      description: "List the columns and what each one holds, with made-up example values. Columns alone are enough. Do not paste real rows."
+      placeholder: "Column | what it holds | made-up example"
+    validations:
+      required: true
+
+  - type: input
+    id: volume
+    attributes:
+      label: "Rows per run and how often"
+      placeholder: "For example: about 200 rows, weekly"
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: "What happens for one row, step by step?"
+      description: "From the first page to the last, in your own words. Rough is fine."
+
+  - type: textarea
+    id: success
+    attributes:
+      label: "How do you know a row worked?"
+      description: "What the site or system shows after a success: a receipt number, the new record's name or email on the page, a downloaded file. If the only sign is a generic 'Success' message, say so."
+    validations:
+      required: true
+
+  - type: textarea
+    id: irreversible
+    attributes:
+      label: "Which step cannot be undone?"
+      description: "The click or call after which the row exists for real: submit, send, pay, publish, delete. If you do not know which one it is, say that."
+    validations:
+      required: true
+
+  - type: input
+    id: row-identity
+    attributes:
+      label: "What identifies one row?"
+      description: "The value that tells two rows apart and that must not be entered twice: an email address, an invoice number, a reference. Describe the kind of value, not a real one."
+
+  - type: dropdown
+    id: obstacles
+    attributes:
+      label: "Anything that might get in the way?"
+      multiple: true
+      options:
+        - "Login with a one-time code"
+        - "CAPTCHA or bot detection"
+        - "Single sign-on with a company account"
+        - "File uploads"
+        - "File downloads"
+        - "Slow pages or pages that change layout"
+        - "I am not sure"
+
+  - type: checkboxes
+    id: agreements
+    attributes:
+      label: "Before you submit"
+      options:
+        - label: "I am allowed to automate this site or system"
+          required: true
+        - label: "The maintainer may reuse this description, rewritten and without names, as a public example or test case"

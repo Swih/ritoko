@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -41,6 +41,9 @@ export class Browser {
   #page: Page | undefined
   #opening: Promise<Page> | undefined
   #shared = false
+  /** Only the process this object actually spawned; never a PID discovered through CDP or a profile. */
+  #child: ChildProcess | undefined
+  #launchFailed = false
 
   constructor(options: { profile?: string; headless?: boolean; executablePath?: string } = {}) {
     this.profile = resolve(options.profile ?? paths.profile)
@@ -69,6 +72,7 @@ export class Browser {
   }
 
   async #open(): Promise<Page> {
+    this.#launchFailed = false
     if (this.mode === 'chrome') {
       const why = await this.#openShared()
       if (why === true) return this.#page as Page
@@ -100,21 +104,38 @@ export class Browser {
             ],
             { stdio: 'ignore', detached: true, windowsHide: true },
           )
+          this.#child = child
+          child.once('exit', () => {
+            if (this.#child === child) this.#child = undefined
+          })
           let launchError: Error | undefined
           child.on('error', (error) => {
             launchError = error
           })
           child.unref()
           launched = true
-          const deadline = Date.now() + 20_000
-          while (Date.now() < deadline) {
-            if (launchError) throw launchError
-            if ((await this.#attach()) === true) return
-            await delay(100)
+          try {
+            const deadline = Date.now() + 20_000
+            while (Date.now() < deadline) {
+              if (launchError) throw launchError
+              if (child.exitCode !== null || child.signalCode !== null)
+                throw new Error('Chrome exited before exposing its local CDP endpoint')
+              if ((await this.#attach()) === true) return
+              await delay(100)
+            }
+            throw new Error(
+              'Chrome did not expose its local CDP endpoint. Close the Ritoko Chrome window and retry.',
+            )
+          } catch (error) {
+            this.#launchFailed = true
+            // Still under browser-start: another client cannot adopt this failed launch during cleanup.
+            try {
+              await this.#stopChild()
+            } catch (cleanup) {
+              throw new Error(`${(error as Error).message}; ${(cleanup as Error).message}`, { cause: error })
+            }
+            throw error
           }
-          throw new Error(
-            'Chrome did not expose its local CDP endpoint. Close the Ritoko Chrome window and retry.',
-          )
         }, 'browser-start')
       } finally {
         ledger.db.close()
@@ -219,6 +240,21 @@ export class Browser {
     await this.#connection?.close()
   }
 
+  /** Bounded cleanup of our own launch handle; never stop another Chrome by name, profile or discovered PID. */
+  async #stopChild(): Promise<void> {
+    const child = this.#child
+    if (!child) return
+    const exited = () => !child.pid || child.exitCode !== null || child.signalCode !== null
+    for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+      if (exited()) break
+      child.kill(signal)
+      const deadline = Date.now() + 2_000
+      while (!exited() && Date.now() < deadline) await delay(50)
+    }
+    if (!exited()) throw new Error('The Chrome process launched by Ritoko did not exit during cleanup')
+    if (this.#child === child) this.#child = undefined
+  }
+
   /**
    * Explicit shutdown, used by isolated tests and the browser-close command. Returns once Chrome has exited:
    * a Chrome still closing (slower on macOS) would be reattached by the next client, or absorb a relaunch.
@@ -226,7 +262,9 @@ export class Browser {
   async shutdown(): Promise<void> {
     // The user's own Chrome is never closed: Ritoko only disconnects from it.
     if (this.#shared || (!this.#connection && this.mode !== 'dedicated')) return this.close()
-    if (!this.#connection) await this.page()
+    if (this.#launchFailed) return this.#stopChild()
+    // Closing must never launch Chrome. An explicit dedicated browser-close may attach to an existing one.
+    if (!this.#connection && (await this.#attach()) !== true) return this.#stopChild()
     const session = await this.#connection?.newBrowserCDPSession()
     const info = await session?.send('SystemInfo.getProcessInfo').catch(() => undefined)
     const pid = info?.processInfo.find((p) => p.type === 'browser')?.id
@@ -234,6 +272,7 @@ export class Browser {
     await this.close().catch(() => {})
     const deadline = Date.now() + 15_000
     while (pid && processAlive(pid) && Date.now() < deadline) await delay(100)
+    await this.#stopChild()
   }
 }
 
@@ -258,10 +297,18 @@ function sameTab() {
 }
 
 function chromePath(explicit?: string): string {
-  if (explicit) {
-    if (!existsSync(explicit)) throw new Error(`Chrome executable not found: ${explicit}`)
-    return explicit
-  }
+  const found = findChrome(explicit)
+  if (found) return found
+  throw new Error(
+    explicit
+      ? `Chrome executable not found: ${explicit}`
+      : 'Google Chrome is required. Install it or set RITOKO_CHROME_PATH.',
+  )
+}
+
+/** The Chrome executable a dedicated Chrome is launched from: the explicit one, else a standard install. */
+export function findChrome(explicit?: string): string | undefined {
+  if (explicit) return existsSync(explicit) ? explicit : undefined
   const candidates =
     process.platform === 'win32'
       ? [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
@@ -277,7 +324,5 @@ function chromePath(explicit?: string): string {
             '/usr/bin/chromium',
             '/usr/bin/chromium-browser',
           ]
-  const found = candidates.find(existsSync)
-  if (!found) throw new Error('Google Chrome is required. Install it or set RITOKO_CHROME_PATH.')
-  return found
+  return candidates.find(existsSync)
 }

@@ -949,6 +949,8 @@ function parseResult(value: unknown): HostResult | undefined {
 /** Host scripts cannot reproduce trusted keyboard or iframe browser automation. Refuse unsupported plans. */
 function hostCheck(wf: Workflow): void {
   check(wf)
+  if (wf.ensure)
+    throw new Error('ensure requires the direct runner; host mode does not support destination lookup')
   if (wf.setup.length || wf.teardown.length)
     throw new Error('Host mode does not support setup or teardown yet; use an item-only workflow')
   for (const step of wf.item) {

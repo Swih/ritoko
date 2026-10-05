@@ -128,7 +128,7 @@ const checkTable = (table, fail) => {
     for (const [c, cell] of row.entries()) checkHtml(cell, `table.rows[${r}][${c}]`, fail, true)
   }
   const headers = table.rowHeaders
-  if (headers !== undefined && typeof headers !== 'boolean') fail('table.rowHeaders must be true or false')
+  if (headers !== undefined && typeof headers !== 'boolean') fail('table.rowHeaders must be a boolean')
   if (table.note !== undefined) checkText(table.note, 'table.note', fail)
 }
 

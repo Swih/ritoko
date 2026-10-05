@@ -13,7 +13,7 @@ const output = resolve(root, process.argv[2] ?? join(tmpdir(), 'ritoko-site-pref
 const samples = process.env.SITE_SAMPLES === '1'
 const origin = 'https://ritoko.com'
 const locales = { en: 'en_US', fr: 'fr_FR' }
-const aiBots = [
+const allowedBots = [
   'OAI-SearchBot',
   'GPTBot',
   'ClaudeBot',
@@ -272,7 +272,7 @@ const checkGenerated = (record, complain) => {
     if (dated?.[field] && !times.includes(dated[field])) complain(`${field} is not shown on the page`)
   }
   if (!slugRoute.test(route)) return
-  if ((html.match(/class="short-answer"/g) ?? []).length !== 1) complain('expected one short answer block')
+  if ((html.match(/class="short-answer"/g) ?? []).length !== 1) complain('expected one short answer')
   const answer = html.match(shortAnswerPattern)?.[1]
   const words = answer ? textOf(answer).split(' ').length : 0
   if (words > 80) complain(`the short answer is ${words} words, the limit is 80`)
@@ -280,8 +280,10 @@ const checkGenerated = (record, complain) => {
   if (articles.length !== 1) complain(`expected one Article, found ${articles.length}`)
   const article = articles[0]
   if (!article) return
-  if (article.inLanguage !== lang) complain(`Article inLanguage is ${article.inLanguage}, expected ${lang}`)
-  if (article.mainEntityOfPage?.['@id'] !== expected) complain('Article mainEntityOfPage is not this page')
+  const language = article.inLanguage
+  if (language !== lang) complain(`Article inLanguage is ${language}, expected ${lang}`)
+  const mainEntity = article.mainEntityOfPage?.['@id']
+  if (mainEntity !== expected) complain('Article mainEntityOfPage is not this page')
 }
 
 const records = all.filter((name) => extname(name) === '.html').map(parse)
@@ -384,7 +386,7 @@ for (const name of ['llms.txt', 'llms-full.txt']) {
   const text = readFileSync(file, 'utf8')
   for (const match of text.matchAll(/https:\/\/ritoko\.com\/[^\s)\]]*/g)) {
     const url = match[0].replace(/[.,;:]+$/, '')
-    if (!existsSync(fileFor(new URL(url).pathname))) errors.push(`${name}: link does not resolve: ${url}`)
+    if (!existsSync(fileFor(new URL(url).pathname))) errors.push(`${name}: dead link ${url}`)
   }
   for (const record of records.filter((item) => contentRoute.test(item.route))) {
     if (!text.includes(record.expected)) errors.push(`${name} does not list ${record.expected}`)
@@ -416,7 +418,7 @@ for (const raw of robots.split('\n')) {
     for (const agent of agents) robotRules.get(agent).push(`${field}: ${line[2]}`)
   }
 }
-for (const agent of ['*', ...aiBots]) {
+for (const agent of ['*', ...allowedBots]) {
   const rules = robotRules.get(agent) ?? []
   if (!rules.includes('allow: /')) errors.push(`robots.txt does not allow ${agent}`)
   if (rules.some((rule) => rule.startsWith('disallow:') && rule.slice(9).trim() !== '')) {

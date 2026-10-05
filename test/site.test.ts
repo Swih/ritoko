@@ -67,7 +67,8 @@ describe('site pages', () => {
     const urls: string[] = xml.match(/<url>.*?<\/url>/g) ?? []
     expect(urls).toHaveLength(pages.length)
     for (const url of urls) expect(url).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/)
-    const guide = urls.find((url) => url.includes('<loc>https://ritoko.com/guides/ritoko-sample-problem<'))
+    const loc = '<loc>https://ritoko.com/guides/ritoko-sample-problem<'
+    const guide = urls.find((url) => url.includes(loc))
     expect(guide?.match(/<xhtml:link /g)).toHaveLength(3)
     expect(xml).toContain('xmlns:xhtml="http://www.w3.org/1999/xhtml"')
   })

@@ -215,7 +215,8 @@ test('reconcile errors preserve review; absence releases only for later explicit
   f.state.hang = false
   expect((await f.runner.resume(id)).status).toBe('done')
   expect(f.state.writes).toBe(2)
-})
+  // Includes durable start, two reconciliations and resume on slow Windows CI storage.
+}, 30_000)
 
 test('busy and duplicate barriers prevent lookup; cancelled reconciliation never reopens the run', async () => {
   const f = await fixture()

@@ -188,7 +188,8 @@ describe('mixed host integrations', () => {
     expect(done.done).toMatchObject({ status: 'partial', counts: { done: 1, review: 1 } })
     expect(f.ledger.items(first.runId)[0]?.vars.receipt).toBe('receipt-a')
     expect((await f.start()).done?.counts).toEqual({ skipped: 1, review: 1 })
-  })
+    // Several durable disk-backed runs share this test; allow slow Windows CI storage.
+  }, 30_000)
 
   test.each([
     {

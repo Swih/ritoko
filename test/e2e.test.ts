@@ -132,11 +132,12 @@ describe('Chrome and real server effects', () => {
       item: [
         { id: 'open', do: 'goto', url: `${f.site.url}/upload-form` },
         { id: 'choose', do: 'upload', target: label('CSV'), file: '{{item.File}}', commit: true },
-        { id: 'confirmed', do: 'expect', text: 'Uploaded CSV', timeoutMs: 2000 },
+        // File selection starts navigation asynchronously; verify the receipt document explicitly.
+        { id: 'confirmed', do: 'expect', url: '/upload-file', text: 'Uploaded CSV', timeoutMs: 10_000 },
       ],
     })
     const first = await f.runner.start('auto-upload', { input })
-    expect(outcome(first)).toBe('done')
+    expect(outcome(first), JSON.stringify(first.report)).toBe('done')
     expect(f.site.uploads).toHaveLength(1)
     expect(f.site.uploads[0]).toContain('123,42.00')
     expect((await f.runner.start('auto-upload', { input })).report.counts).toEqual({ skipped: 1 })

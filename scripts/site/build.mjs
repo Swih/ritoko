@@ -44,7 +44,7 @@ const organization = {
 // contact, privacy). It is the <lastmod> in sitemap.xml. Bump it when the content of those pages changes.
 // Guides, comparisons and the FAQ carry their own dateModified. The home page also takes the date of the
 // newest guide, because it lists the guides.
-const siteModified = '2026-10-04'
+const siteModified = '2026-10-07'
 // Pages built from scripts/site/pages/*. SITE_SAMPLES=1 adds the sample entries (never commit that output).
 const content = await loadPages({ samples: process.env.SITE_SAMPLES === '1' })
 
@@ -106,7 +106,7 @@ const footerLinks = (lang) => {
   return `<nav class="footer-links" aria-label="Guides and answers">${links.join('')}</nav>`
 }
 const footer = (lang = 'en') =>
-  `<footer class="site-footer"${chromeLang(lang)}><div class="wrap"><div class="footer-top"><p>One good run. <br>Every next row.</p><a class="text-link" href="https://github.com/Swih/ritoko">Make it yours ${arrow}</a></div><div class="footer-wordmark" aria-hidden="true">Ritoko${mark()}</div>${footerLinks(lang)}<div class="footer-bottom"><span>Local workflows. Lasting memory.</span><a href="/contact">A workflow to automate? ${arrow}</a><a href="/benchmarks">Measurements</a><a href="https://github.com/Swih/ritoko/blob/main/LICENSE">Open source · MIT</a><a href="/privacy">Privacy</a><span>© 2026 Swih</span></div></div></footer></body></html>`
+  `<footer class="site-footer"${chromeLang(lang)}><div class="wrap"><div class="footer-top"><p>One good run. <br>Every next row.</p><a class="text-link" href="https://github.com/Swih/ritoko">Make it yours ${arrow}</a></div><div class="footer-wordmark" aria-hidden="true">Ritoko${mark()}</div>${footerLinks(lang)}<div class="footer-bottom"><span>Local workflows. Lasting memory.</span><a href="/contact">A workflow to automate? ${arrow}</a><a href="/benchmarks">Measurements</a><a href="https://github.com/Swih/ritoko/blob/main/LICENSE">Open source · MIT</a><a href="/privacy">Privacy</a><a href="/fr/mentions-legales" hreflang="fr" lang="fr">Mentions légales</a><span>© 2026 Swih</span></div></div></footer></body></html>`
 const rows = () =>
   Array.from(
     { length: 10 },
@@ -319,6 +319,19 @@ writeFileSync(
   `${head('Website privacy — Ritoko', 'How Ritoko measures website use and how to choose whether to participate.', 'privacy')}${header('privacy')}<main id="main" tabindex="-1"><section class="editorial privacy-content wrap">${readFileSync(resolve(root, 'scripts/site/privacy.html'), 'utf8')}</section></main>${footer()}`,
 )
 
+const dekim = {
+  '@type': 'Organization',
+  '@id': `${origin}/fr/mentions-legales#publisher`,
+  name: 'DEKIM',
+  identifier: { '@type': 'PropertyValue', propertyID: 'SIREN', value: '102182359' },
+  brand: { '@id': `${origin}/#organization` },
+}
+mkdirSync(resolve(site, 'fr'), { recursive: true })
+writeFileSync(
+  resolve(site, 'fr/mentions-legales.html'),
+  `${head('Mentions légales — Ritoko', 'Ritoko est un produit de DEKIM, SIREN 102182359. Éditeur, contact, hébergement et licence du site ritoko.com.', 'fr/mentions-legales', [dekim], false, { lang: 'fr' })}${header('legal', 'fr')}<main id="main" tabindex="-1"><section class="editorial privacy-content wrap">${readFileSync(resolve(root, 'scripts/site/mentions-legales.html'), 'utf8')}</section></main>${footer('fr')}`,
+)
+
 // Everything generated from page data is rebuilt from scratch, so a page removed from the data (or left over
 // from a SITE_SAMPLES=1 build) leaves nothing behind.
 const generatedDirectories = ['guides', 'compare', 'fr/guides']
@@ -371,6 +384,7 @@ const indexable = [
   pageModified('benchmarks'),
   pageModified('contact'),
   pageModified('privacy'),
+  pageModified('fr/mentions-legales'),
   ...content.entries,
 ]
 writeFileSync(resolve(site, 'sitemap.xml'), sitemapXml(origin, indexable))

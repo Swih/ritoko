@@ -31,7 +31,7 @@ The suite must continue proving:
 
 ## 0.2.0 release
 
-Version 0.2.0 adds the recovery features below. Publication requires successful CI on the exact revision on all three operating systems and a verified consumer installation. The [GitHub release](https://github.com/Swih/ritoko/releases/tag/v0.2.0) and matching npm metadata are the publication records; a version in Git alone does not establish that a channel was updated.
+Version 0.2.0 adds the recovery features below. It was released from commit `c333b04` on 2026-10-09. The [GitHub release](https://github.com/Swih/ritoko/releases/tag/v0.2.0) and [published npm 0.2.0](https://www.npmjs.com/package/ritoko/v/0.2.0) are public; the released tarball integrity matches the validated tarball. The [Publish MCP Registry workflow](https://github.com/Swih/ritoko/actions/runs/37926177879) succeeded, and [io.github.Swih/ritoko 0.2.0](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Swih%2Fritoko/versions/0.2.0) is active and marked latest.
 
 - `ensure` checks an explicitly scoped destination before an item writes. A matching record is confirmed without submitting; only a positive absence predicate permits the workflow to continue.
 - `reconcile` and MCP `run_reconcile` settle an original uncertain row using its frozen workflow, parameters and item data. They read once without setup or resubmission; inconclusive results leave the row unchanged.
@@ -42,7 +42,15 @@ Version 0.2.0 adds the recovery features below. Publication requires successful 
 
 Local validation on 2026-10-09, Windows with Node 24.19.0: lint and TypeScript pass, 206 unit tests and 37 E2E tests pass, including the isolated npm tarball, its ten-row first-try demo and the killed-CLI HTTP acceptance/reconciliation test. Site preflight passes for 36 indexable pages. The first-try smoke verifies ten separate readbacks, ten skips on rerun and no extra creates; CI also runs it on each operating system. Earlier browser checks covered 24 pages at 390 and 1,440 px, analytics consent, private-parameter removal and unknown-path exclusion.
 
-The [MCPB builder and validator](../scripts/release/README.md) derive the package version, include locked production dependencies with lifecycle scripts disabled, validate using pinned official tooling, check the extracted file inventory and collect the actual tool definitions. The candidate smoke on Windows with Node 24.19.0 exposes 20 tools, verifies two API items and skips both on rerun with no extra requests or Chrome. This does not establish compatibility with a desktop client's bundled Node runtime.
+The [MCPB builder and validator](../scripts/release/README.md) derive the package version, include locked production dependencies with lifecycle scripts disabled, validate using pinned official tooling, check the extracted file inventory and collect the actual tool definitions. Both the extracted MCPB and the published npm 0.2.0 installation pass the Windows Node 24.19.0 smoke: 20 tools, two verified API items, two skips on rerun and two requests, without Chrome. This does not establish compatibility with a desktop client's bundled Node runtime.
+
+Distribution verified on 2026-10-09:
+
+- npm, GitHub and the official MCP Registry publish 0.2.0. The source release CI passed on Windows, macOS and Linux.
+- [Smithery](https://smithery.ai/servers/akaswitsh/ritoko) publishes the self-contained 0.2.0 MCPB, exposes 20 tools and serves a download matching the validated bundle hash.
+- Claude Code and Codex Git marketplace installations expose 20 tools and complete the MCP handshake on Windows. This verifies plugin installation and protocol startup; it does not establish an end-to-end agent conversation or official marketplace approval.
+- [Glama](https://glama.ai/mcp/servers/Swih/ritoko) still shows release 0.1.2. Three candidate builds failed with HTTP 502 before Docker build execution; the last attempt followed the GitHub release. Auto-Release is enabled but blocked by that failed build.
+- The [awesome-mcp-servers submission](https://github.com/punkpeye/awesome-mcp-servers/pull/16035) is open, awaiting review. The Anthropic MCPB submission is prepared and remains unsent pending the account owner's terms and Google profile consent.
 
 The CI also rebuilds the site, checks publication metadata and rejects committed generated output that differs from the source data. Source-revision CI results remain the release gate; local tests alone do not establish support across all systems.
 
@@ -95,16 +103,16 @@ For each executable change, choose a new version, align the package, root lock, 
 
 Consumers choose their update policy:
 
-- `npx -y ritoko@0.1.1 mcp` keeps a reproducible version until the configuration changes.
+- `npx -y ritoko@0.2.0 mcp` keeps a reproducible version until the configuration changes.
 - `npx --yes --prefer-online ritoko@latest mcp` checks the stable npm tag at launch. It still needs a process/client restart and does not replace a running server.
 - A globally installed copy needs `npm install -g ritoko@latest`; a cloned source installation needs the new revision, dependencies and build.
 - A client-managed plugin or MCPB bundle follows that client's update mechanism. A directory listing alone does not upgrade a local installation.
 
 Use pinned versions for repeatable automation; test an upgrade on a small batch before moving production workflows to it. See [npm execution and cache behavior](https://docs.npmjs.com/cli/v11/commands/npm-exec/) and [npm publishing and dist tags](https://docs.npmjs.com/cli/v11/commands/npm-publish/).
 
-The official MCP step is automated after a manual dispatch. Glama's enabled Auto-Release setting is intended to build and publish on each GitHub release; the initial version was also checked through its manual build/release path. npm publishing can later use trusted publishing, and a single release workflow can coordinate npm and the official registry. Smithery automation still needs bundle generation, validation and its account integration. Verify these integrations before relying on a fully automatic release.
+The official MCP step is automated after a manual dispatch. Glama's enabled Auto-Release setting is intended to build and publish on each GitHub release; the initial version was also checked through its manual build/release path. npm publishing can later use trusted publishing, and a single release workflow can coordinate npm and the official registry. Smithery bundle generation and validation now use committed scripts; account publication remains a separate authenticated step. Verify these integrations before relying on a fully automatic release.
 
-## Initial distribution record
+## Initial 0.1.1 distribution record
 
 Version 0.1.1 was published on 2026-10-04 from commit `d6c3a67135fe478b248ae1b43600a49d32ff6f72`, with [successful CI on all three operating systems](https://github.com/Swih/ritoko/actions/runs/37156295697).
 

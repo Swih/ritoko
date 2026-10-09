@@ -59,6 +59,8 @@ node node_modules/ritoko/examples/first-run/demo.mjs
 
 The demo starts a loopback HTTP service, creates ten fake CSV customers, verifies each record by reading it back, then reruns and checks that all ten rows are skipped with no extra writes. It needs no account, API key or Chrome. The journal is isolated in a temporary directory printed by the command. This tests a local simulation; browser interruption and destination reconciliation are separate tests. [English/French guide and expected results](docs/first-run.md).
 
+The npm example requires a published 0.2.0. If that version is not yet available in your registry, use the repository checkout instructions in the guide to try it from source.
+
 ### 1. Install in your agent
 
 Requires **Node.js 24 or newer**. Browser workflows using the direct runner also need **Google Chrome**. Standalone HTTP/MCP workflows can run without a browser.

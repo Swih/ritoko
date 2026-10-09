@@ -1,0 +1,57 @@
+{
+  "name": "first-run-customers",
+  "version": 1,
+  "description": "Local simulation: create fake customers, verify each with a readback, then skip verified rows.",
+  "params": {
+    "input": {
+      "description": "Fake CSV path"
+    },
+    "base": {
+      "description": "Loopback service URL"
+    }
+  },
+  "items": {
+    "from": "{{param.input}}",
+    "key": "{{item.Email}}",
+    "scope": "{{param.base}}"
+  },
+  "item": [
+    {
+      "id": "create",
+      "do": "http",
+      "method": "POST",
+      "url": "{{param.base}}/customers",
+      "body": {
+        "json": {
+          "email": "{{item.Email}}",
+          "name": "{{item.Name}}",
+          "company": "{{item.Company}}"
+        }
+      },
+      "commit": true,
+      "expect": {
+        "status": [
+          201
+        ]
+      },
+      "save": {
+        "customerId": "/id"
+      }
+    },
+    {
+      "id": "verify",
+      "do": "http",
+      "url": "{{param.base}}/customers/{{vars.customerId}}",
+      "expect": {
+        "status": [
+          200
+        ],
+        "json": {
+          "/email": "{{item.Email}}",
+          "/name": "{{item.Name}}",
+          "/company": "{{item.Company}}"
+        }
+      }
+    }
+  ]
+}

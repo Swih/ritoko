@@ -35,22 +35,34 @@ async function setup() {
   const store = new Store(join(root, 'workflows'))
   const browser = new Browser({ profile: join(root, 'profile'), headless: true })
   cleanup.push(async () => {
-    await browser.shutdown().catch(() => {})
+    let shutdownError: unknown
+    try {
+      await browser.shutdown()
+    } catch (error) {
+      shutdownError = error
+    }
     await site.close()
     try {
       ledger.db.close()
     } catch {
       /* A recovery test already closed the original connection. */
     }
+    let removeError: unknown
     for (let i = 0; i < 30; i++) {
       try {
         rmSync(root, { recursive: true, force: true })
-        return
-      } catch {
+        removeError = undefined
+        break
+      } catch (error) {
+        removeError = error
+        // Windows may briefly retain profile handles after Chrome exits. Other
+        // failures (e.g. access to the parent directory) need their actual cause.
+        if (!['EBUSY', 'ENOTEMPTY', 'EPERM'].includes((error as NodeJS.ErrnoException).code ?? '')) break
         await delay(100)
       }
     }
-    throw new Error(`Chrome did not release the test profile: ${root}`)
+    const errors = [shutdownError, removeError].filter((error) => error !== undefined)
+    if (errors.length) throw new AggregateError(errors, `Isolated browser cleanup failed: ${root}`)
   })
   const page = await browser.page()
   // The OS clipboard is never touched: the page's copy is captured where it is made.

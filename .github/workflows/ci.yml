@@ -60,6 +60,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: First-try demo with verified writes and rerun skips
+        run: node examples/first-run/smoke.mjs
       # The runner images ship Google Chrome, which chromePath() in src/engine/browser.ts finds by itself
       # (/usr/bin/google-chrome, C:\Program Files\Google\Chrome\..., /Applications/Google Chrome.app). RITOKO_CHROME_PATH is not needed.
       - run: pnpm test:e2e

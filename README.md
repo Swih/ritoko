@@ -13,7 +13,7 @@ Use it as a **Claude Code or Codex plugin**, a **local Model Context Protocol (M
 [![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-43853d)](https://nodejs.org/)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-[Quick start](#quick-start) · [Use cases](#what-can-you-automate) · [How it works](#how-it-works) · [Workflow example](#what-does-a-workflow-look-like) · [FAQ](#faq) · [Advanced guide](docs/usage.md)
+[Try locally](#try-ten-fake-customers-locally) · [Quick start](#quick-start) · [Use cases](#what-can-you-automate) · [How it works](#how-it-works) · [Workflow example](#what-does-a-workflow-look-like) · [FAQ](#faq) · [Advanced guide](docs/usage.md)
 
 [![Ritoko crash-and-resume demo: a local customer batch reaches 10 unique submissions, while one uncertain row remains held for review.](site/assets/media/poster.png)](https://github.com/Swih/ritoko/raw/refs/heads/main/site/assets/media/demo.mp4)
 
@@ -48,11 +48,22 @@ Ritoko fits **repeated tasks with explicit rules and verifiable outcomes**. A ne
 
 ## Quick start
 
+### Try ten fake customers locally
+
+With **Node.js 24+**, in an empty directory:
+
+```sh
+npm install ritoko@0.2.0
+node node_modules/ritoko/examples/first-run/demo.mjs
+```
+
+The demo starts a loopback HTTP service, creates ten fake CSV customers, verifies each record by reading it back, then reruns and checks that all ten rows are skipped with no extra writes. It needs no account, API key or Chrome. The journal is isolated in a temporary directory printed by the command. This tests a local simulation; browser interruption and destination reconciliation are separate tests. [English/French guide and expected results](docs/first-run.md).
+
 ### 1. Install in your agent
 
 Requires **Node.js 24 or newer**. Browser workflows using the direct runner also need **Google Chrome**. Standalone HTTP/MCP workflows can run without a browser.
 
-This branch prepares **0.2.0**. The published npm 0.1.1 does not include `ensure`, `reconcile` or `doctor`; use the validated Git revision to evaluate them. [Release status and checks](docs/release.md#020-release-candidate).
+`ensure`, `reconcile`, `doctor` and the first-try demo require **0.2.0 or newer**. Check the [versioned releases](https://github.com/Swih/ritoko/releases) and [release gates](docs/release.md#020-release) before upgrading a pinned installation.
 
 **Claude Code**
 
@@ -264,6 +275,7 @@ Optional network capture provides fetch/XHR metadata to help the agent investiga
 - [Problem guides](https://ritoko.com/guides) and [tool comparisons](https://ritoko.com/compare): choose a workflow and understand its tradeoffs.
 - [Search visibility measurement](docs/research/geo-measurement.md): fixed English/French prompts and reports based on captured answers.
 - [Release gates](docs/release.md): required checks, validation roadmap, publishing and update policies.
+- [Local software privacy](docs/privacy.md): stored run data, configured destinations, credentials and retention.
 - [Report a bug or request a feature](https://github.com/Swih/ritoko/issues): include the client, Node/browser/OS versions and a redacted reproduction. Keep credentials and business data private.
 
 For development, use Node.js 24+ and pnpm:

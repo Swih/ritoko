@@ -29,9 +29,9 @@ The suite must continue proving:
 - A thousand-row API-only host run completes, retains no finished cursors, and does not materialize the whole input repeatedly. This complexity check uses SQLite in memory; persistence is exercised separately by restart tests.
 - The tarball ships compiled integration modules, installs without development dependencies, exposes its CLI and stdio MCP tools, preserves exit statuses, and completes API-only workflows without Chrome.
 
-## 0.2.0 release candidate
+## 0.2.0 release
 
-The recovery branch prepares 0.2.0; it is not a published npm release. The production distribution remains 0.1.1 until the candidate passes CI on all three operating systems and the versioned package is published through the release process below.
+Version 0.2.0 adds the recovery features below. Publication requires successful CI on the exact revision on all three operating systems and a verified consumer installation. The [GitHub release](https://github.com/Swih/ritoko/releases/tag/v0.2.0) and matching npm metadata are the publication records; a version in Git alone does not establish that a channel was updated.
 
 - `ensure` checks an explicitly scoped destination before an item writes. A matching record is confirmed without submitting; only a positive absence predicate permits the workflow to continue.
 - `reconcile` and MCP `run_reconcile` settle an original uncertain row using its frozen workflow, parameters and item data. They read once without setup or resubmission; inconclusive results leave the row unchanged.
@@ -40,11 +40,13 @@ The recovery branch prepares 0.2.0; it is not a published npm release. The produ
 - `doctor` inspects the runtime and local installation. Selector fallbacks and unscoped workflows are visible in diagnostics and evidence. A failed dedicated Chrome startup stops only the process launched by that browser instance. Shutdown reconnects to an existing dedicated Chrome, bounds CDP calls and reports unconfirmed closure; it never starts a new browser.
 - The site adds six guides in each language, six English tool comparisons and English/French FAQs, with canonical links, reciprocal language links, dated sources, sitemaps and text discovery files. The generated routes stay inside the analytics consent and path allowlist.
 
-Local candidate validation on 2026-10-05, Windows with Node 24.19.0: lint and TypeScript pass, 206 unit tests and 37 E2E tests pass, including the isolated npm tarball and killed-CLI HTTP acceptance/reconciliation test. Site preflight passes for 35 indexable pages; production builds are idempotent, sample output is refused in production mode and removed on rebuild. Browser checks cover 24 pages at 390 and 1,440 px, and analytics consent, private-parameter removal and unknown-path exclusion.
+Local validation on 2026-10-09, Windows with Node 24.19.0: lint and TypeScript pass, 206 unit tests and 37 E2E tests pass, including the isolated npm tarball, its ten-row first-try demo and the killed-CLI HTTP acceptance/reconciliation test. Site preflight passes for 36 indexable pages. The first-try smoke verifies ten separate readbacks, ten skips on rerun and no extra creates; CI also runs it on each operating system. Earlier browser checks covered 24 pages at 390 and 1,440 px, analytics consent, private-parameter removal and unknown-path exclusion.
+
+The [MCPB builder and validator](../scripts/release/README.md) derive the package version, include locked production dependencies with lifecycle scripts disabled, validate using pinned official tooling, check the extracted file inventory and collect the actual tool definitions. The candidate smoke on Windows with Node 24.19.0 exposes 20 tools, verifies two API items and skips both on rerun with no extra requests or Chrome. This does not establish compatibility with a desktop client's bundled Node runtime.
 
 The CI also rebuilds the site, checks publication metadata and rejects committed generated output that differs from the source data. Source-revision CI results remain the release gate; local tests alone do not establish support across all systems.
 
-Search and answer visibility remains **not measured**. The [measurement kit](research/geo-measurement.md) reports real, saved observations; the research forms and interview templates contain no collected customer evidence. Technical SEO checks do not demonstrate rankings, citations or customer demand.
+Search visibility is tracked through Search Console; answer-engine citations remain **not measured** until real samples are saved. The [measurement kit](research/geo-measurement.md) reports real, saved observations; the research forms and interview templates contain no collected customer evidence. Technical SEO checks do not demonstrate rankings, citations or customer demand.
 
 ## Evidence before expanding compatibility claims
 
@@ -88,7 +90,7 @@ For each executable change, choose a new version, align the package, root lock, 
 | Official MCP Registry | Dispatch the existing workflow for each npm release. It validates and publishes the versioned manifest after CI and npm checks. |
 | GitHub | Push source changes; publish release notes and the matching archive for package releases. |
 | Glama | Auto-Release is enabled for GitHub releases. Verify that the expected version and tools were published; manual repository sync, build and release remain the fallback. |
-| Link-only directories such as the submitted mcpservers.org listing | Keep the GitHub link stable; update submitted metadata when the name, description, installation or supported features change. Their review/indexing is separate. |
+| Link-only directories such as the public mcpservers.org listing | Keep the GitHub link stable; update submitted metadata when the name, description, installation or supported features change. Their review/indexing is separate. |
 | Smithery | Build and test a new MCPB bundle, then publish its release. The npm tarball does not replace a bundle. |
 
 Consumers choose their update policy:
@@ -114,7 +116,7 @@ Version 0.1.1 was published on 2026-10-04 from commit `d6c3a67135fe478b248ae1b43
 | [Glama](https://glama.ai/mcp/servers/Swih/ritoko) | Successful build of the tagged source, version 0.1.1 published, 18 detected tools. |
 | [Smithery](https://smithery.ai/servers/akaswitsh/ritoko) | Successful local stdio bundle release, 18 public tools and accurate metadata. |
 
-The free mcpservers.org form was submitted; submission is not approval. OpenAI directory submission still needs the applicable developer verification, metadata and review requirements.
+The free [mcpservers.org listing](https://mcpservers.org/servers/swih/ritoko) is public, verified 9 October 2026. OpenAI directory submission still needs the applicable developer verification, metadata and review requirements.
 
 The MCPB archive contains only the npm package and its locked production dependencies. Its extracted-bundle test verifies the 0.1.1 handshake, 18 tools and API replay without Chrome or development dependencies on Windows with Node 24.19.0. Clients must supply Node 24 or newer; bundle availability does not prove every client provides that runtime.
 
